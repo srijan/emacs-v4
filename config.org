@@ -31,10 +31,7 @@ be updated accordingly.
 (org-babel-tangle)
 #+end_src
 
-
-* Configuration
-
-** pre-early-init
+* pre-early-init
 
 This file has the config that has to be loaded before the rest of the minimal-emacs.d code is run
 
@@ -54,13 +51,13 @@ This file has the config that has to be loaded before the rest of the minimal-em
   (setq minimal-emacs-package-initialize-and-refresh nil)
 #+end_src
 
-** post-early-init
+* post-early-init
 
 #+begin_src emacs-lisp :tangle "post-early-init.el"
 ;;; post-early-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
 #+end_src
 
-** pre-init
+* pre-init
 
 #+begin_src emacs-lisp :tangle "pre-init.el"
   ;;; pre-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
@@ -69,7 +66,7 @@ This file has the config that has to be loaded before the rest of the minimal-em
 *** Elpaca
 
 #+begin_src emacs-lisp :tangle "pre-init.el"
-  (defvar elpaca-installer-version 0.9)
+  (defvar elpaca-installer-version 0.10)
   (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
   (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
   (defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
@@ -111,15 +108,49 @@ This file has the config that has to be loaded before the rest of the minimal-em
   ;; Optional: Install use-package support
   (elpaca elpaca-use-package
     (elpaca-use-package-mode))
+
+  ;; Lock file
+  (setq elpaca-lock-file (expand-file-name "elpaca-lock.eld" minimal-emacs-user-directory))
 #+end_src
 
-** post-init
+* post-init
+
+** Header
+This will generate a header at the top of the tangled file to indicate it is generated and is not meant to be modified directly.
+
+#+begin_src emacs-lisp :tangle "post-init.el" :epilogue (format-time-string ";; Last generated on %c")
+  ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
+  ;; This file has been generated from config.org file. DO NOT EDIT.
+#+end_src
+** System information
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defvar my-linux-p (equal (system-name) "GGN001944"))
+  (defvar my-windows-p (equal (system-name) "SHADOW"))
+  (defvar my-mac-p (equal (system-name) "USA600098.local"))
+  (defvar my-phone-p (not (null (getenv "ANDROID_ROOT")))
+    "If non-nil, GNU Emacs is running on Termux.")
+  (when my-phone-p (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
+  (server-start)
+#+end_src
+** Personal Information
 
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
-#+end_src
+  (setq user-full-name "Srijan Choudhary"
+      user-mail-address "srijan4@gmail.com")
+#+END_SRC
+** Mac Specific
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when (eq system-type 'darwin)
+    (setq insert-directory-program "/opt/homebrew/bin/gls"))
 
-*** Compile Angel
+  (use-package exec-path-from-shell
+    :if (memq (window-system) '(mac ns))
+    :ensure t
+    :demand t
+    :config
+    (exec-path-from-shell-initialize))
+#+end_src
+** Compile Angel
 Speed up Emacs by Automatically Byte-compiling and Native-compiling all .el files
 
 TODO: Need to evaluate how much speedup this gives
@@ -138,12 +169,18 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (compile-angel-on-load-mode)
     (add-hook 'emacs-lisp-mode-hook #'compile-angel-on-save-local-mode))
 #+end_src
-
-*** To Import
+** Misc config
 
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;;; Custom file
 
+  (defun my-reload-emacs-configuration ()
+    (interactive)
+    (load-file (expand-file-name "init.el" minimal-emacs-user-directory)))
+
+  ;; Open the config file
+  (global-set-key (kbd "C-x ,") (lambda() (interactive) (find-file (expand-file-name "config.org" minimal-emacs-user-directory))))
+
+  ;;; Custom file
   (setq custom-file null-device)
 
   ;; Auto-revert in Emacs is a feature that automatically updates the
@@ -166,6 +203,210 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   ;; upon reopening. This feature is particularly beneficial for resuming work at
   ;; the precise point where you previously left off.
   (add-hook 'after-init-hook #'save-place-mode)
+
+  ;; Hide warnings and display only errors
+  (setq warning-minimum-level :error)
+
+  ;; Disable momentum-based scrolling for precise control and enable smoother scrolling.
+  (setq pixel-scroll-precision-use-momentum 1)
+  (pixel-scroll-precision-mode 1)
+
+  ;; Pixel Scroll Precision Mode on Emacs for macOS: If you're using a pre-built
+  ;; emacs-mac (version <= 29.1), smooth scrolling is handled by the Mac port
+  ;; code, which overrides `pixel-scroll-precision-mode'. In this case, use the
+  ;; following line instead of enabling `pixel-scroll-precision-mode':
+  ;;
+  ;; (pixel-scroll-mode 1)
+  ;;
+  ;; For more details, see:
+  ;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
+
+  ;; Display the time in the modeline
+  (display-time-mode 1)
+
+  ;; Paren match highlighting
+  (show-paren-mode 1)
+
+  ;; Replace selected text with typed text
+  (delete-selection-mode 1)
+
+  ;; Configure Emacs to ask for confirmation before exiting
+  ;; (setq confirm-kill-emacs 'y-or-n-p)
+
+  ;; Automatically hide file details (permissions, size, modification date, etc.)
+  ;; in Dired buffers for a cleaner display.
+  (add-hook 'dired-mode-hook #'dired-hide-details-mode)
+
+  ;; Kill current buffer (instead of asking first buffer name)
+  (global-set-key (kbd "C-x k") 'kill-current-buffer)
+
+  ;; M-n for new frame (M-n is unbound in vanilla emacs)
+  (defun new-frame ()
+    (interactive)
+    (select-frame (make-frame))
+    (switch-to-buffer "*scratch*"))
+  (global-set-key (kbd "M-n") 'new-frame)
+
+  (setq save-interprogram-paste-before-kill t)
+
+#+end_src
+** Which-Key
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (use-package which-key
+    :ensure nil ; builtin
+    :defer t
+    :commands which-key-mode
+    :hook (after-init . which-key-mode)
+    :custom
+    (which-key-idle-delay 1.5)
+    (which-key-idle-secondary-delay 0.25)
+    (which-key-add-column-padding 1)
+    (which-key-max-description-length 40))
+
+  (use-package uniquify
+    :ensure nil
+    :custom
+    (uniquify-buffer-name-style 'reverse)
+    (uniquify-separator "•")
+    (uniquify-after-kill-buffer-p t)
+    (uniquify-ignore-buffers-re "^\\*"))
+
+#+end_src
+** Looks & Themes
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (add-to-list 'default-frame-alist '(height . 55))
+  (add-to-list 'default-frame-alist '(width . 160))
+
+  (use-package fontaine
+    :custom
+    (fontaine-presets
+     '(
+       (iosevka-regular
+        :default-family "Iosevka Comfy"
+        :default-height 150
+        :variable-pitch-family "Iosevka Comfy Duo"
+        )
+       (iawriter-regular
+        :default-family "iMWritingMono Nerd Font"
+        :default-height 150
+        :line-spacing 0.1
+        :variable-pitch-family "iMWritingDuo Nerd Font Propo"
+        ;; :variable-pitch-family "Merriweather Sans Light"
+        ;; :variable-pitch-height 0.96
+        )
+       (berkeley-regular
+        :default-family "Berkeley Mono"
+        :default-height 150
+        :line-spacing 0.1
+        :variable-pitch-family "Berkeley Mono Variable"
+        ;; :variable-pitch-family "Merriweather Sans Light"
+        ;; :variable-pitch-height 0.96
+        )
+       (berkeley-large
+        :inherit berkeley-regular
+        :default-height 200
+        )
+       (t
+        :default-family "Iosevka Comfy"
+        :default-weight regular
+        :default-height 160
+        :fixed-pitch-family nil ; falls back to :default-family
+        :fixed-pitch-weight nil ; falls back to :default-weight
+        :fixed-pitch-height 1.0
+        :fixed-pitch-serif-family nil ; falls back to :default-family
+        :fixed-pitch-serif-weight nil ; falls back to :default-weight
+        :fixed-pitch-serif-height 1.0
+        :variable-pitch-family "Iosevka Comfy Duo"
+        :variable-pitch-weight nil
+        :variable-pitch-height 1.0
+        :bold-family nil ; use whatever the underlying face has
+        :bold-weight bold
+        :italic-family nil
+        :italic-slant italic
+        :line-spacing nil)))
+    :config
+    (when (display-graphic-p)
+      (fontaine-set-preset 'iosevka-regular))
+    )
+
+  (use-package emoji
+    :ensure nil
+    :bind (("C-c e" . emoji-search))
+    )
+
+  (use-package ef-themes
+    :if (display-graphic-p)
+    :demand
+    :custom
+    (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
+    (ef-themes-headings
+     '((0 . (variable-pitch semibold 1.2))
+       (1 . (variable-pitch semibold 1.1))
+       (agenda-date . (variable-pitch 1.2))
+       (agenda-structure . (variable-pitch 1.4))
+       (t . (variable-pitch))
+       ))
+    (ef-themes-mixed-fonts t)
+    (ef-themes-variable-pitch-ui t)
+    :hook ((ef-themes-post-load . my-ef-themes-mode-line))
+    ;; (ef-themes-post-load . fontaine-apply-current-preset))
+    :config
+    (defun my-ef-themes-mode-line ()
+      "Tweak the style of the mode lines."
+      (ef-themes-with-colors
+        (custom-set-faces
+         `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+         `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+    :init
+    (ef-themes-select 'ef-dream)
+    )
+  (use-package olivetti
+    :custom
+    (olivetti-style 'fancy)
+    (setq olivetti-fringe '(:background "#e5e5e5"))
+    )
+  (use-package spacious-padding)
+#+end_src
+** Windows
+#+BEGIN_SRC emacs-lisp :tangle "post-init.el"
+
+  ;; Switching between windows. Use `ace-window`, configure using :init and :bind
+  (use-package ace-window
+    :ensure t
+    :init
+    (setq aw-scope 'frame)
+    :bind ("M-o" . ace-window))
+
+  ;; Track changes in the window configuration, allowing undoing actions such as
+  ;; closing windows.
+  (winner-mode 1)
+
+  ;; Window dividers separate windows visually. Window dividers are bars that can
+  ;; be dragged with the mouse, thus allowing you to easily resize adjacent
+  ;; windows.
+  ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
+  (add-hook 'after-init-hook #'window-divider-mode)
+
+#+END_SRC
+** Tabs
+#+BEGIN_SRC emacs-lisp :tangle "post-init.el"
+  (use-package tab-line
+    :ensure nil
+    :demand t
+    :bind
+    (("C-S-<tab>" . tab-line-switch-to-prev-tab)
+     ("C-<iso-lefttab>" . tab-line-switch-to-prev-tab)
+     ("C-<tab>" . tab-line-switch-to-next-tab))
+    :config
+    (global-tab-line-mode 1)
+    (setq
+     tab-line-new-button-show nil
+     tab-line-close-button-show nil))
+  #+END_SRC
+** Completions
+
+#+begin_src emacs-lisp :tangle "post-init.el"
 
   (use-package vertico
     ;; (Note: It is recommended to also enable the savehist package.)
@@ -324,6 +565,46 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 
     :custom
     (outline-indent-ellipsis " ▼ "))
+#+end_src
+** Completion in region and at point
+
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (use-package corfu
+    :ensure t
+    :defer t
+    :commands (corfu-mode global-corfu-mode)
+
+    :hook ((prog-mode . corfu-mode)
+           (shell-mode . corfu-mode)
+           (eshell-mode . corfu-mode))
+
+    :custom
+    ;; Hide commands in M-x which do not apply to the current mode.
+    (read-extended-command-predicate #'command-completion-default-include-p)
+    ;; Disable Ispell completion function. As an alternative try `cape-dict'.
+    (text-mode-ispell-word-completion nil)
+    (tab-always-indent 'complete)
+
+    ;; Enable Corfu
+    :config
+    (global-corfu-mode))
+
+  (use-package cape
+    :ensure t
+    :defer t
+    :commands (cape-dabbrev cape-file cape-elisp-block)
+    :bind ("C-c p" . cape-prefix-map)
+    :init
+    ;; Add to the global default value of `completion-at-point-functions' which is
+    ;; used by `completion-at-point'.
+    (add-hook 'completion-at-point-functions #'cape-dabbrev)
+    (add-hook 'completion-at-point-functions #'cape-file)
+    (add-hook 'completion-at-point-functions #'cape-elisp-block))
+#+end_src
+** Evil
+
+#+begin_src emacs-lisp :tangle "post-init.el"
 
   ;; evil-want-keybinding must be declared before Evil and Evil Collection
   (setq evil-want-keybinding nil)
@@ -334,17 +615,55 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq evil-undo-system 'undo-fu)
     (setq evil-want-integration t)
     (setq evil-want-keybinding nil)
+
+    (setq evil-respect-visual-line-mode t)
+    (setq evil-undo-system 'undo-fu)
+
+    ;; Prevents esc-key from translating to meta-key in terminal mode.
+    (setq evil-esc-delay 0)
+    (setq-default evil-shift-width 2)
+    (setq-default evil-symbol-word-search t)
+
+    (with-eval-after-load "org"
+      (evil-add-command-properties #'org-open-at-point :jump t))
+
     :custom
     (evil-want-Y-yank-to-eol t)
     :config
+    (evil-declare-key 'normal org-mode-map
+      "gk" 'outline-up-heading
+      "gj" 'outline-next-visible-heading
+      "H" 'org-beginning-of-line
+      "L" 'org-end-of-line
+      "t" 'org-todo
+      (kbd "<tab>") 'org-cycle
+      ",c" 'org-cycle
+      ",e" 'org-export-dispatch
+      ",n" 'outline-next-visible-heading
+      ",p" 'outline-previous-visible-heading
+      ",t" 'org-set-tags-command
+      ",u" 'outline-up-heading
+      "$" 'org-end-of-line
+      "^" 'org-beginning-of-line
+      "-" 'org-ctrl-c-minus ; change bullet style
+      )
+
     (evil-select-search-module 'evil-search-module 'evil-search)
     (evil-mode 1))
 
   (use-package evil-collection
-    :after evil
+    :after evil ;; mu4e
     :ensure t
     :config
     (evil-collection-init))
+
+  (use-package evil-org
+    :ensure t
+    :after org
+    :hook (org-mode . (lambda () evil-org-mode))
+    :config
+    (require 'evil-org-agenda)
+    (evil-org-agenda-set-keys))
 
   (use-package undo-fu
     :ensure t
@@ -362,10 +681,10 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :config
     (undo-fu-session-global-mode))
 
-  (use-package vim-tab-bar
-    :ensure t
-    :commands vim-tab-bar-mode
-    :hook (after-init . vim-tab-bar-mode))
+  ;;  (use-package vim-tab-bar
+  ;;    :ensure t
+  ;;    :commands vim-tab-bar-mode
+  ;;    :hook (after-init . vim-tab-bar-mode))
 
   (use-package evil-visualstar
     :after evil
@@ -405,7 +724,468 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :commands evil-snipe-mode
     :init (evil-snipe-mode 1))
   ;; :hook (after-init . evil-snipe-mode))
+#+end_src
+** Modeline
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package diminish
+    :config (require 'diminish))
+  (use-package all-the-icons)
+  (use-package nerd-icons)
+  (use-package doom-modeline
+    :ensure t
+    :init
+    (doom-modeline-mode 1))
+#+end_src
+** Dirvish
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package dirvish
+    :init
+    (dirvish-override-dired-mode)
+    :custom
+    (dirvish-quick-access-entries ; It's a custom option, `setq' won't work
+     '(("h" "~/"                          "Home")
+       ("d" "~/Downloads/"                "Downloads")
+       ("n" "~/ndxrd-uxxs3/notes/"        "Notes")
+       ("o" "~/ndxrd-uxxs3/org/"          "GTD Org")
+       ("c" "~/.config/emacs-v4/"         "Config")))
+    :config
+    ;; (dirvish-peek-mode) ; Preview files in minibuffer
+    ;; (dirvish-side-follow-mode) ; similar to `treemacs-follow-mode'
+    (setq dirvish-mode-line-format
+          '(:left (sort symlink) :right (omit yank index)))
+    (setq dirvish-attributes
+          '(all-the-icons file-time file-size collapse subtree-state vc-state git-msg))
+    (setq delete-by-moving-to-trash t)
+    (setq dired-listing-switches
+          "-l --almost-all --human-readable --group-directories-first --no-group")
+    (evil-make-overriding-map dirvish-mode-map 'normal)
+    :bind ; Bind `dirvish|dirvish-side|dirvish-dwim' as you see fit
+    (("C-c f" . dirvish)
+     :map dirvish-mode-map ; Dirvish inherits `dired-mode-map'
+     ("a"   . dirvish-quick-access)
+     ("f"   . dirvish-file-info-menu)
+     ("y"   . dirvish-yank-menu)
+     ("N"   . dirvish-narrow)
+     ("^"   . dirvish-history-last)
+     ("h"   . dirvish-history-jump) ; remapped `describe-mode'
+     ("s"   . dirvish-quicksort)    ; remapped `dired-sort-toggle-or-edit'
+     ("v"   . dirvish-vc-menu)      ; remapped `dired-view-file'
+     ("TAB" . dirvish-subtree-toggle)
+     ("M-f" . dirvish-history-go-forward)
+     ("M-b" . dirvish-history-go-backward)
+     ("M-l" . dirvish-ls-switches-menu)
+     ("M-m" . dirvish-mark-menu)
+     ("M-t" . dirvish-layout-toggle)
+     ("M-s" . dirvish-setup-menu)
+     ("M-e" . dirvish-emerge-menu)
+     ("M-j" . dirvish-fd-jump)))
+#+end_src
+** Elpaca Sync
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (elpaca-process-queues)
+#+end_src
+** Term Mode Stuff
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defun bb/setup-term-mode ()
+    (evil-local-set-key 'insert (kbd "C-r") 'bb/send-C-r))
 
+  (defun bb/send-C-r ()
+    (interactive)
+    (term-send-raw-string "\C-r"))
+
+  (add-hook 'term-mode-hook 'bb/setup-term-mode)
+
+  ;; (when my-linux-p
+  ;;   (use-package vterm))
+
+  (when my-windows-p
+    (use-package powershell))
+
+  (use-package eat
+    :defer t)
+  ;; (straight-use-package
+  ;;  '(eat :type git
+  ;;        :host codeberg
+  ;;        :repo "akib/emacs-eat"
+  ;;        :files ("*.el" ("term" "term/*.el") "*.texi"
+  ;;                "*.ti" ("terminfo/e" "terminfo/e/*")
+  ;;                ("terminfo/65" "terminfo/65/*")
+  ;;                ("integration" "integration/*")
+  ;;                (:exclude ".dir-locals.el" "*-tests.el"))))
+
+#+end_src
+** Org and GTD
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org
+    :ensure nil
+    :hook ((org-capture-mode . delete-other-windows)
+           (org-capture-mode . evil-insert-state))
+    :custom
+    (org-support-shift-select t)
+    (org-agenda-files nil) ;; Will be set automatically by org-gtd
+    (org-ellipsis " ▼")
+    (org-cycle-separator-lines 1)
+    ;; (org-pretty-entities t)
+
+    (org-agenda-start-with-log-mode t)
+    (org-agenda-window-setup 'only-window)
+    (org-startup-folded 'content)
+    (org-startup-indented t)
+    (org-startup-with-inline-images t)
+    (org-clock-persist 'history)
+    (org-log-into-drawer t)
+    (org-log-done 'time)
+    (org-tag-persistent-alist '((:startgroup . nil)
+                                ("@computer") ("@mail") ("@errands") ("@calls")
+                                (:endgroup . nil) (:startgroup . nil)
+                                ("@tz-ist") ("@tz-est") ("@anytime")
+                                (:endgroup . nil)
+                                ("@fun") ("@agenda") ("@home") ("@anywhere")
+                                ))
+    (org-capture-templates
+     '(
+       ("i" "Inbox" entry (file org-gtd-inbox-path) "* %?\n%U\n%i"
+        :kill-buffer t)
+       ("l" "Inbox with link" entry (file org-gtd-inbox-path) "* %?\n%U\n%i\n%a"
+        :kill-buffer t)))
+    :config
+    (require 'org-tempo)
+    ;; (setq org-agenda-prefix-format '((agenda . " %i %-12:c%?-12t%-6e% s")))
+    ;; So that we can jump back
+    (advice-add 'org-open-at-point :before #'evil-set-jump)
+
+    ;; Clock stuff
+    (org-clock-persistence-insinuate)
+    (defun current-clock-time-to-file ()
+      (interactive)
+      (with-temp-file "~/.local/state/task"
+        (if (org-clocking-p)
+            (insert (org-clock-get-clock-string))
+          (insert "No Task"))))
+    (run-with-timer 1 60 'current-clock-time-to-file)
+    (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
+    (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    ;; Custom functions
+    (defun org-capture-inbox ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-gtd-capture nil "i"))
+    (defun org-capture-mail ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-capture nil "@"))
+    (defun org-open-inbox ()
+      (interactive)
+      (find-file "~/ndxrd-uxxs3/org/inbox.org")
+      )
+    :bind
+    ("C-c i" . org-capture-inbox)
+    ("C-c j" . org-open-inbox)
+    ("C-c a" . org-agenda)
+    ("C-c l" . org-store-link)
+    )
+  (use-package org-protocol
+    :ensure nil
+    :custom
+    (org-protocol-default-template-key "l")
+    )
+#+END_SRC
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defun my/org-gtd-maybe-set-tags ()
+    "Use as a hook when decorating items after clarifying them."
+    (unless (org-gtd-organize-type-member-p '(trash knowledge quick-action incubated project-heading))
+      (org-set-tags-command)))
+  (defun my/org-gtd-maybe-set-effort ()
+    "Use as a hook when decorating items after clarifying them."
+    (unless (org-gtd-organize-type-member-p '(trash knowledge quick-action incubated project-heading))
+      (org-set-effort)))
+
+  (use-package org-contrib
+    :config
+    (require 'ox-confluence)
+    )
+
+  (defun my-org-gtd-archive-item-at-point ()
+    "Dirty hack to force archiving where I know I can."
+    (interactive)
+    (with-temp-message ""
+      (let* ((last-command nil)
+             (temp-file (make-temp-file org-gtd-directory nil ".org"))
+             (buffer (find-file-noselect temp-file)))
+        (org-cut-subtree)
+        (org-gtd-core-prepare-buffer buffer)
+        (with-current-buffer buffer
+          (org-paste-subtree)
+          (goto-char (point-min))
+          (with-org-gtd-context (org-archive-subtree-default))
+          (basic-save-buffer)
+          (kill-buffer))
+        (delete-file temp-file))))
+
+  (use-package org-gtd
+    ;; :straight (:type git :host github :repo "Trevoke/org-gtd.el")
+    :after org
+    ;; :ensure t
+    :demand t
+    :init
+    (setq org-gtd-update-ack "3.0.0")
+    (setq org-gtd-areas-of-focus '("Work Leadership" "Work Architecture" "Work Support"
+                                   "Productivity" "Personal Development" "Personal Services"
+                                   "Family" "Health" "Finances"))
+    :custom
+    (org-gtd-directory "~/ndxrd-uxxs3/org/")
+    (org-edna-use-inheritance t)
+    (org-gtd-organize-hooks '(org-gtd-areas-of-focus--set my/org-gtd-maybe-set-tags my/org-gtd-maybe-set-effort))
+    (org-gtd-refile-to-any-target nil)
+    (org-gtd-engage-prefix-width 24)
+    (org-gtd-capture-templates org-capture-templates)
+    :config
+    (org-edna-mode 1)
+    (org-gtd-mode 1)
+    :bind
+    (("C-c d c" . org-gtd-capture)
+     ("C-c c"   . org-gtd-capture)
+     ("C-c d e" . org-gtd-engage)
+     ("C-c d p" . org-gtd-process-inbox)
+     ("C-c d n" . org-gtd-show-all-next)
+     ("C-c d x" . org-gtd-clarify-item)
+     ("C-c d w" . org-gtd-delegate-item-at-point)
+     ("C-c d a" . org-gtd-area-of-focus-set-on-item-at-point)
+     ("C-c d s" . org-save-all-org-buffers)
+     ("C-c d k" . my-org-gtd-archive-item-at-point)
+     :map org-gtd-clarify-map
+     ("C-c c" . org-gtd-organize)
+     :map org-agenda-mode-map
+     ("C-c d a" . org-gtd-area-of-focus-set-on-agenda-item)
+     ("C-c d x" . org-gtd-clarify-agenda-item)
+     ))
+
+#+END_SRC
+** Popup frames
+#+begin_src emacs-lisp :tangle "post-init.el"
+  ;;;; Run commands in a popup frame
+
+  (defun prot-window-delete-popup-frame (&rest _)
+    "Kill selected selected frame if it has parameter `prot-window-popup-frame`.
+  Use this function via a hook."
+    (when (frame-parameter nil 'prot-window-popup-frame)
+      (delete-frame)))
+
+  (defmacro prot-window-define-with-popup-frame (command)
+    "Define interactive function which calls COMMAND in a new frame.
+  Make the new frame have the `prot-window-popup-frame' parameter."
+    `(defun ,(intern (format "prot-window-popup-%s" command)) ()
+       ,(format "Run `%s' in a popup frame with `prot-window-popup-frame' parameter.
+  Also see `prot-window-delete-popup-frame'." command)
+       (interactive)
+       (let ((frame (make-frame '((prot-window-popup-frame . t)))))
+         (select-frame frame)
+         (switch-to-buffer " prot-window-hidden-buffer-for-popup-frame")
+         (condition-case nil
+             (call-interactively ',command)
+           ((quit error user-error)
+            (delete-frame frame))))))
+
+  (declare-function org-capture "org-capture" (&optional goto keys))
+  (defvar org-capture-after-finalize-hook)
+
+  ;;;###autoload (autoload 'prot-window-popup-org-capture "prot-window")
+  (prot-window-define-with-popup-frame org-capture)
+
+  (add-hook 'org-capture-after-finalize-hook #'prot-window-delete-popup-frame)
+
+  ;; (declare-function tmr "tmr" (time &optional description acknowledgep))
+  ;; (defvar tmr-timer-created-functions)
+
+  ;;;###autoload (autoload 'prot-window-popup-tmr "prot-window")
+  ;; (prot-window-define-with-popup-frame tmr)
+
+  ;; (add-hook 'tmr-timer-created-functions #'prot-window-delete-popup-frame)C
+#+END_SRC
+#+BEGIN_SRC emacs-lisp
+  (use-package todoist)
+
+  (defun fetch-todoist-inbox ()
+    (interactive)
+    (let ((tasks (todoist--query "GET" "/tasks?project_id=377175964")))
+      (mapcar (lambda (task)
+                (todoist--insert-task task 1 t)
+                (todoist--query
+                 "DELETE"
+                 (format "/tasks/%s" (todoist--task-id task))))
+              tasks)
+      ))
+
+#+END_SRC
+** Notes
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package denote
+    ;; :demand
+    :ensure (:ref "3.1.0")
+    :init
+    (require 'denote-journal-extras)
+    :custom
+    (denote-directory (expand-file-name "~/ndxrd-uxxs3/notes/"))
+    (denote-journal-extras-directory (expand-file-name "~/ndxrd-uxxs3/notes/journals/"))
+    (denote-known-keywords '("emacs" "philosophy" "politics" "economics"))
+    (denote-journal-extras-title-format 'day-date-month-year)
+    (denote-file-type 'markdown-yaml)
+    (denote-infer-keywords t)
+    (denote-sort-keywords t)
+    (denote-date-prompt-use-org-read-date t)
+    (denote-backlinks-show-context t)
+    (denote-rename-buffer-mode t)
+    (denote-templates
+     `((weekly-review . ,(f-read (expand-file-name
+                                  "templates/weekly-review.md"
+                                  denote-directory)))
+       (journal . "")))
+    :config
+    (defun my-weekly-review-journal ()
+      "Create an entry tagged 'weeklyreview' with the year and week as
+         its title using the 'weekly-review' template. If a note for
+         the current week exists, visit it.  If multiple entries
+         exist, prompt with completion for a choice between them.
+         Else create a new file."
+      (interactive)
+      (let* ((denote-directory (concat denote-directory "journals/"))
+             ;; Year corresponding to ISO week + ISO week
+             (week (format-time-string "%G W%V"))
+             (string (denote-sluggify 'title week))
+             (files (denote-directory-files string))
+             )
+        (cond
+         ((> (length files) 1)
+          (find-file (completing-read "Select file: " files nil :require-match)))
+         (files
+          (find-file (car files)))
+         (t
+          (denote week '("weeklyreview") nil nil nil 'weekly-review)))))
+    :hook (dired-mode . denote-dired-mode)
+    ;; :bind (map :global-map
+    ;;            ("C-c n d" . (dired-jump denote-directory)))
+    :bind
+    ("C-c n n" . denote)
+    ("C-c n j" . denote-journal-extras-new-or-existing-entry)
+    ("C-c n r" . my-weekly-review-journal)
+    )
+  (use-package denote-menu
+    :after denote)
+  (use-package consult-notes
+    :init
+    (require 'denote)
+    :config
+    (consult-notes-denote-mode 1)
+    :bind
+    ("C-c n f" . consult-notes)
+    ("C-c n s" . consult-notes-search-in-all-notes)
+    )
+
+#+end_src
+** Ediff
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package ediff
+    :ensure nil
+    :config
+    (setq ediff-split-window-function 'split-window-horizontally)
+    (setq ediff-window-setup-function 'ediff-setup-windows-plain)
+    (defun my/command-line-diff (switch)
+      (setq initial-buffer-choice nil)
+      (let ((file1 (pop command-line-args-left))
+        (file2 (pop command-line-args-left)))
+        (ediff file1 file2)))
+    ;; show the ediff command buffer in the same frame
+    (add-to-list 'command-switch-alist '("-diff" . my/command-line-diff)))
+#+END_SRC
+** File tree
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package treemacs
+    :init
+    (with-eval-after-load 'winum
+      (define-key winum-keymap (kbd "M-0") #'treemacs-select-window))
+    :config
+    (defun my-treemacs-toggle ()
+      "Initialize or toggle treemacs.
+  Ensures that only the current project is present and all other projects have
+  been removed.
+  Use `treemacs' command for old functionality."
+      (interactive)
+      (pcase (treemacs-current-visibility)
+        (`visible (delete-window (treemacs-get-local-window)))
+        (_ (treemacs-add-and-display-current-project))))
+    :custom
+    (treemacs-follow-after-init t)
+    (treemacs-is-never-other-window t)
+    (treemacs-follow-mode -1)
+    :bind
+    (:map global-map
+          ("M-0"       . treemacs-select-window)
+          ("C-x t 1"   . treemacs-delete-other-windows)
+          ("C-x t t"   . my-treemacs-toggle)
+          ("C-x t d"   . treemacs-select-directory)
+          ("C-x t B"   . treemacs-bookmark)
+          ("C-x t C-t" . treemacs-find-file)
+          ("C-x t M-t" . treemacs-find-tag))
+    )
+  (use-package treemacs-evil
+    :after (treemacs evil)
+    :ensure t)
+
+  (use-package treemacs-icons-dired
+    :hook (dired-mode . treemacs-icons-dired-enable-once)
+    :ensure t)
+
+  (use-package treemacs-magit
+    :after (treemacs magit)
+    :ensure t)
+  #+end_src
+** Workspaces - beframe
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package beframe
+    :demand
+    :custom
+    (beframe-functions-in-frames '(project-prompt-project-dir))
+    :config
+    (beframe-mode 1)
+    (defvar consult-buffer-sources)
+    (declare-function consult--buffer-state "consult")
+
+    (with-eval-after-load 'consult
+      (defface beframe-buffer
+        '((t :inherit font-lock-string-face))
+        "Face for `consult' framed buffers.")
+
+      (defun my-beframe-buffer-names-sorted (&optional frame)
+        "Return the list of buffers from `beframe-buffer-names' sorted by visibility.
+    With optional argument FRAME, return the list of buffers of FRAME."
+        (beframe-buffer-names frame :sort #'beframe-buffer-sort-visibility))
+
+      (defvar beframe-consult-source
+        `( :name     "Frame-specific buffers (current frame)"
+           :narrow   ?F
+           :category buffer
+           :face     beframe-buffer
+           :history  beframe-history
+           :items    ,#'my-beframe-buffer-names-sorted
+           :action   ,#'switch-to-buffer
+           :state    ,#'consult--buffer-state))
+
+      (add-to-list 'consult-buffer-sources 'beframe-consult-source))
+
+    (define-key global-map (kbd "C-c b") #'beframe-prefix-map)
+    (global-set-key (kbd "C-b") 'consult-buffer)
+    (define-key evil-normal-state-map (kbd "C-b") 'consult-buffer)
+    ;; TODO: ↑ does not work in org agenda
+    )
+
+#+end_src
+** Dictionary and spelling
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package jinx)
+#+END_SRC
+** Eglot
+#+begin_src emacs-lisp :tangle "post-init.el"
   (use-package eglot
     :ensure nil
     :defer t
@@ -414,105 +1194,551 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
                eglot-rename
                eglot-format-buffer))
 
-  (use-package corfu
-    :ensure t
-    :defer t
-    :commands (corfu-mode global-corfu-mode)
+  (use-package eldoc :diminish eldoc-mode)
+#+end_src
+** AI Assistants
+#+begin_src emacs-lisp :tangle "post-init.el"
 
-    :hook ((prog-mode . corfu-mode)
-           (shell-mode . corfu-mode)
-           (eshell-mode . corfu-mode))
-
-    :custom
-    ;; Hide commands in M-x which do not apply to the current mode.
-    (read-extended-command-predicate #'command-completion-default-include-p)
-    ;; Disable Ispell completion function. As an alternative try `cape-dict'.
-    (text-mode-ispell-word-completion nil)
-    (tab-always-indent 'complete)
-
-    ;; Enable Corfu
+  (use-package gptel
+    :bind
+    ("C-c g g" . (lambda () (interactive) 
+                   (switch-to-buffer (gptel "*Claude*"))))
+    ("C-c g s" . gptel-send)
+    ("C-c g m" . gptel-menu)
+    ("C-c g r" . gptel-rewrite)
     :config
-    (global-corfu-mode))
+    (setq
+     gptel-model 'claude-3-5-sonnet-20241022
+     gptel-backend (gptel-make-anthropic "Claude"
+                     :stream t
+                     :key (lambda ()
+                            (auth-source-pick-first-password :host "api.anthropic.com" :user "credential"))
+                     ))
+    )
 
-  (use-package cape
+  (use-package copilot
+    :diminish
+    ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
     :ensure t
-    :defer t
-    :commands (cape-dabbrev cape-file cape-elisp-block)
-    :bind ("C-c p" . cape-prefix-map)
-    :init
-    ;; Add to the global default value of `completion-at-point-functions' which is
-    ;; used by `completion-at-point'.
-    (add-hook 'completion-at-point-functions #'cape-dabbrev)
-    (add-hook 'completion-at-point-functions #'cape-file)
-    (add-hook 'completion-at-point-functions #'cape-elisp-block))
-
-
-  ;; Hide warnings and display only errors
-  (setq warning-minimum-level :error)
-
-  (use-package which-key
-    :ensure nil ; builtin
-    :defer t
-    :commands which-key-mode
-    :hook (after-init . which-key-mode)
+    :hook (prog-mode . (lambda ()
+                         (interactive)
+                         (unless (file-remote-p default-directory)
+          		 (copilot-mode))))
     :custom
-    (which-key-idle-delay 1.5)
-    (which-key-idle-secondary-delay 0.25)
-    (which-key-add-column-padding 1)
-    (which-key-max-description-length 40))
+    (copilot-max-char 1000000)
+    :bind (
+           ;; ("C-TAB" . 'copilot-accept-completion-by-word)
+           ;; ("C-<tab>" . 'copilot-accept-completion-by-word)
+           :map copilot-completion-map
+           ("<tab>" . 'copilot-accept-completion)
+           ("TAB" . 'copilot-accept-completion))
+    :config
+    (add-to-list 'copilot-indentation-alist '(prog-mode 2))
+    (add-to-list 'copilot-indentation-alist '(org-mode 2))
+    (add-to-list 'copilot-indentation-alist '(text-mode 2))
+    (add-to-list 'copilot-indentation-alist '(closure-mode 2))
+    (add-to-list 'copilot-indentation-alist '(emacs-lisp-mode 2))
+    (add-to-list 'copilot-indentation-alist '(markdown-mode 2))
+    )
 
-  ;; Disable momentum-based scrolling for precise control and enable smoother scrolling.
-  (setq pixel-scroll-precision-use-momentum 1)
-  (pixel-scroll-precision-mode 1)
+  (use-package auth-source-1password
+    :config
+    (auth-source-1password-enable))
 
-  ;; Pixel Scroll Precision Mode on Emacs for macOS: If you're using a pre-built
-  ;; emacs-mac (version <= 29.1), smooth scrolling is handled by the Mac port
-  ;; code, which overrides `pixel-scroll-precision-mode'. In this case, use the
-  ;; following line instead of enabling `pixel-scroll-precision-mode':
-  ;;
-  ;; (pixel-scroll-mode 1)
-  ;;
-  ;; For more details, see:
-  ;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
+  (use-package chatgpt-shell
+    :ensure t
+    :custom
+    ((chatgpt-shell-openai-key
+      (lambda ()
+        (auth-source-pick-first-password :host "openai-key" :user "credential")))))
 
-  ;; Display the time in the modeline
-  (display-time-mode 1)
-
-  ;; Paren match highlighting
-  (show-paren-mode 1)
-
-  ;; Track changes in the window configuration, allowing undoing actions such as
-  ;; closing windows.
-  (winner-mode 1)
-
-  ;; Replace selected text with typed text
-  (delete-selection-mode 1)
-
-  ;; Configure Emacs to ask for confirmation before exiting
-  ;; (setq confirm-kill-emacs 'y-or-n-p)
-
-  (use-package uniquify
+#+end_src
+** Misc for software dev
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package mermaid-mode)
+  (use-package sql-indent)
+  (use-package xmind-org)
+#+END_SRC
+** Language Modes
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (editorconfig-mode 1)
+  (use-package markdown-mode
+    :mode ("README\\.md\\'" . gfm-mode)
+    :init (setq markdown-command '("pandoc" "--from=markdown" "--to=html5"))
+    )
+  (use-package edit-indirect)
+  (use-package transient
+    :ensure t)
+  (use-package magit)
+  (use-package json-mode)
+  (use-package js
     :ensure nil
     :custom
-    (uniquify-buffer-name-style 'reverse)
-    (uniquify-separator "•")
-    (uniquify-after-kill-buffer-p t)
-    (uniquify-ignore-buffers-re "^\\*"))
+    (js-indent-level 2))
+  (when my-windows-p
+    (use-package ahk-mode))
+  (use-package php-mode)
+  ;; (use-package jsonnet-mode)
+  ;; (use-package hierarchy)
+  (use-package tree-mode)
+  (use-package json-navigator)
+  (use-package pet
+    :config
+    (add-hook 'python-base-mode-hook 'pet-mode -10))
+  (use-package jupyter)
+#+END_SRC
+** Erlang & LSP
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package yasnippet
+    :diminish (yas-minor-mode)
+    :config
+    (yas-global-mode t)
+    )
 
-  ;; Window dividers separate windows visually. Window dividers are bars that can
-  ;; be dragged with the mouse, thus allowing you to easily resize adjacent
-  ;; windows.
-  ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
-  (add-hook 'after-init-hook #'window-divider-mode)
+  ;; Install the official Erlang mode
+  (when my-linux-p
+    (add-to-list
+     'load-path (car (file-expand-wildcards
+                      "/usr/lib/erlang/lib/tools-*/emacs"))))
+  (when my-windows-p
+    (add-to-list
+     'load-path (car (file-expand-wildcards
+                      "/Program Files/Erlang OTP/lib/tools-*/emacs"))))
+  (when my-mac-p
+    (add-to-list
+     'load-path (car (file-expand-wildcards
+                      "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
+  (use-package erlang
+    :ensure nil
+    :demand t
+    :hook ((erlang-mode . display-line-numbers-mode)
+           (erlang-mode . column-number-mode))
+    :init
+    )
+  (require 'erlang-start)
+  (use-package indy
+    :disabled
+    :custom
+    (setq indy-rules
+          '((erlang-mode . (
+                            ;; ((indy--current 'indy--starts-with "]") (indy--prev-tab -1))
+                            ;; ((indy--prev    'indy--ends-on "[")     (indy--prev-tab 1))
+                            ;; ((indy--prev    'indy--ends-on ",")     (indy--prev-tab))
 
-  ;; Automatically hide file details (permissions, size, modification date, etc.)
-  ;; in Dired buffers for a cleaner display.
-  (add-hook 'dired-mode-hook #'dired-hide-details-mode)
+  			              ((and (indy--current 'indy--starts-with "end")
+  				                (indy--prev 'indy--ends-on ") ->"))      (indy--prev-tab))
+  			              ((indy--current 'indy--starts-with "end") (indy--prev-tab -1))
+  			              ((indy--prev 'indy--ends-on ") ->")       (indy--prev-tab 1))
+  			              ((indy--current 'indy--starts-with "]")   (indy--prev-tab -1))
+  			              ((indy--prev 'indy--ends-on "[")          (indy--prev-tab 1))
+  			              ((indy--prev 'indy--ends-on ",")          (indy--prev-tab))
+  			              ))
+  	      )
+          ))
+  (use-package elixir-mode)
+
+  (use-package eglot
+    :ensure nil
+    :hook (erlang-mode . eglot-ensure)
+    :config
+    (add-hook 'eglot-managed-mode-hook
+              (lambda ()
+                ;; Show flymake diagnostics first.
+                (setq eldoc-documentation-functions
+                      (cons #'flymake-eldoc-function
+                            (remove #'flymake-eldoc-function eldoc-documentation-functions)))
+                ;; Show all eldoc feedback.
+                (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
+    )
+#+END_SRC
+** Docker and Kubernetes
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package dockerfile-mode)
+  (use-package yaml-mode)
+  (use-package kubernetes
+    :ensure t
+    :commands (kubernetes-overview)
+    :config
+    (setq kubernetes-poll-frequency 3600
+          kubernetes-redraw-frequency 3600))
+  (use-package kubernetes-evil
+    :ensure t
+    :after kubernetes)
+#+end_src
+** Feeds
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package elfeed
+    :ensure
+    :custom
+    (elfeed-use-curl t)
+    (elfeed-log-level 'debug)
+    :config
+    (elfeed-set-timeout 36000)
+    )
+  (use-package elfeed-protocol
+    :custom
+    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.p.nwdr.io"
+                              :api-url "https://miniflux.p.nwdr.io/fever/"
+                              :password (lambda ()
+                                          (auth-source-pick-first-password :host "miniflux.p.nwdr.io" :user "fever")))))
+    (elfeed-protocol-enabled-protocols '(fever))
+    ;; (auth-source-search :host "miniflux.p.nwdr.io" :port "443" :user "emacs")
+    ;; (elfeed-protocol-log-trace t)
+    ;; (elfeed-protocol-fever-maxsize 10)
+    ;; (elfeed-protocol-newsblur-maxpages 1)
+    ;; (elfeed-protocol-owncloud-maxsize 10)
+    ;; (elfeed-protocol-ttrss-maxsize 10)
+    :config
+    (elfeed-protocol-enable)
+    )
+  (use-package elfeed-webkit
+    :ensure
+    :hook (evil-collection-setup . (lambda (&rest a)
+                                     (evil-define-key 'normal elfeed-show-mode-map "z%" 'elfeed-webkit-toggle)
+                                     ))
+    )
+
+  ;; (elfeed-protocol-fever-get-update-mark "fever+https://srijan@miniflux.p.nwdr.io" 'update)
+
+  ;; (let* ((proto-id "fever+https://srijan@miniflux.p.nwdr.io")
+  ;;      (last-id (elfeed-protocol-fever-get-update-mark proto-id 'update)))
+  ;; (elfeed-protocol-fever-set-update-mark  proto-id 'update (- last-id 49252)))
+  ;; (setq my-elfeed-update-timer
+  ;;       (run-at-time 15 15
+  ;;                    (lambda () (when (= elfeed-curl-queue-active 0)
+  ;;                                 (elfeed-update)))))
+  ;; (cancel-timer my-elfeed-update-timer)
+
+  ;; (cl-loop for entry in (elfeed-search-selected)
+  ;;          do (elfeed-untag-1 entry 'unread))
+
+  #+END_SRC
+** JIRA
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package jira
+    :ensure (:host github :repo "unmonoqueteclea/jira.el")
+    :config
+    (setq jira-base-url "https://work.greyorange.com/jira")
+    (setq jira-username "srijan.c@greyorange.com")
+    (setq jira-token (auth-source-pick-first-password
+                      :host "work.greyorange.com-jira" :user "credential"))
+    (setq jira-debug t)
+    (defun jira-api--auth-header (username token)
+      "Generate the Authorization header for Jira requests with USERNAME and TOKEN."
+      (format "Bearer %s" token t))
+    (defun jira-api--url (base-url)
+      "Generate the full URL from BASE-URL for Jira API requests."
+      (concat base-url "/rest/api/2/"))
+    (cl-defun jira-detail--issue (key issue)
+      "Show the detail information of the ISSUE with KEY."
+      (with-current-buffer (get-buffer-create (concat "*Jira Issue Detail: [" key "]*"))
+        (magit-section-mode)
+        ;; avoid horizontal scroll
+        (setq truncate-lines nil)
+        (visual-line-mode 1)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          ;; section: Jira Issue Summary
+          (magit-insert-section (jira-issue-summary nil nil)
+            (magit-insert-heading "Jira Issue Summary")
+            (magit-insert-section-body (jira-detail--issue-summary issue)))
+          (insert "\n")
+          ;; section: Information
+          (magit-insert-section (jira-issue-information nil nil)
+            ;; section: Team Data
+            ;; section: Manager Data
+            (magit-insert-section (manager-data nil nil)
+              (magit-insert-heading "Manager Data")
+              (magit-insert-section-body
+                (jira-detail--issue-manager-data issue)
+                (insert "\n")))
+            ;; section: Description
+            (magit-insert-section (description nil nil)
+              (magit-insert-heading "Description")
+              (magit-insert-section-body
+                (jira-detail--description issue)))))
+        (pop-to-buffer (current-buffer))))
+    (defun jira-doc-format (doc)
+      "Format DOC in Jira Document Format to a string."
+      (jira-doc--list-to-str (list doc) "\n"))
+    (defun jira-detail--issue-manager-data (issue)
+      "Show the manager data of the ISSUE."
+      (let ((priority (jira-detail--issue-fmt issue :priority-name))
+            (labels (jira-detail--issue-fmt issue :labels))
+            (assignee (jira-detail--issue-fmt issue :assignee-name))
+            (reporter (jira-detail--issue-fmt issue :reporter-name)))
+        (insert (jira-detail--header "Priority") priority "\n")
+        (insert (jira-detail--header "Labels") labels "\n")
+        (insert (jira-detail--header "Assignee")  assignee "\n")
+        (insert (jira-detail--header "Reporter") reporter "\n")))
+    )
+
+#+end_src
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org-jira
+    :config
+    (setq jiralib-url "https://work.greyorange.com/jira")
+    (setq jiralib-token (cons "Authorization"
+                              (concat "Bearer " (auth-source-pick-first-password
+                                                 :host "work.greyorange.com-jira" :user "credential"))))
+    )
+#+end_src
+** COMMENT Mastodon
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package emojify)
+  ;; (:hook (after-init . global-emojify-mode))
+  (use-package mastodon
+    ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
+    :ensure t
+    :config
+    (setq mastodon-instance-url "https://indieweb.social"
+          mastodon-active-user "srijan")
+    )
+ #+end_src
+** mu4e
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package gnus
+    :ensure nil
+    :custom
+    (gnus-inhibit-mime-unbuttonizing t)
+    (mm-discouraged-alternatives '("text/html" "text/richtext")))
+
+  (when my-mac-p
+    (add-to-list
+     'load-path (car (file-expand-wildcards
+                      "/opt/homebrew/share/emacs/site-lisp/mu/mu4e"))))
+  (use-package mu4e
+    :ensure nil
+    ;; :if my-linux-p
+    :hook (evil-collection-setup . (lambda (&rest a)
+                                     (evil-define-key 'normal mu4e-headers-mode-map "z%" 'mu4e-headers-mark-thread)
+                                     ))
+    ;; :bind (:map mu4e-view-mode-map
+    ;;             ("K" .
+    ;;              (lambda ()
+    ;;              (interactive)
+    ;;              (gnus-article-jump-to-part 1)
+    ;;              (gnus-article-press-button)
+    ;;           (gnus-article-press-button))))
+    :config
+    (global-set-key (kbd "C-c m") 'mu4e)
+    (setq
+     ;; mu4e-use-maildirs-extension nil
+     mu4e-view-prefer-html nil
+     ;; mu4e-get-mail-command "~/.local/bin/mailsync.sh" ;; "mbsync fastmail-all"
+     mu4e-get-mail-command "mbsync fastmail-all" ;; "mbsync fastmail-all"
+     ;; mu4e-update-interval 180
+     mu4e-headers-auto-update t
+     mu4e-search-include-related nil
+     mu4e-compose-signature-auto-include nil
+     mu4e-compose-format-flowed t
+     mu4e-use-fancy-chars t
+     mu4e-headers-visible-flags '(draft flagged new passed replied trashed attach encrypted signed)
+     mu4e-headers-fields '((:human-date . 12)
+                           (:flags . 6)
+                           (:from-or-to . 32)
+                           (:subject))
+     mu4e-headers-date-format "%Y-%m-%d"
+     mu4e-headers-from-or-to-prefix '("" . "To: ")
+     mu4e-headers-leave-behavior 'apply
+     mu4e-hide-index-messages t
+     message-kill-buffer-on-exit t
+     shr-color-visible-luminance-min 80
+     mu4e-index-cleanup nil
+     )
 
 
-  ;;; Personal Information
+    (defun my-mu4e-refile-folder-fun (msg)
+      "Set the refile folder for MSG."
+      (let ((date (mu4e-message-field msg :date)))
+        (cond
+         (date
+          (format "/fastmail/Archive/%s" (format-time-string "%Y" date)))
+         (t
+          "/fastmail/Archive"))))
 
-  (setq user-full-name "Srijan Choudhary"
-        user-mail-address "srijan4@gmail.com")
+    (setq user-full-name "Srijan Choudhary"
+          mu4e-sent-folder "/fastmail/Sent Items"
+          mu4e-drafts-folder "/fastmail/Drafts"
+          mu4e-trash-folder "/fastmail/Trash"
+          ;; mu4e-refile-folder "/fastmail/Archive"
+          mu4e-refile-folder 'my-mu4e-refile-folder-fun
+          mu4e-attachment-dir  "~/Downloads"
+          )
 
+    ;; enable inline images
+    (setq mu4e-view-show-images t)
+
+    ;; use imagemagick, if available
+    (when (fboundp 'imagemagick-register-types)
+      (imagemagick-register-types))
+
+    ;; every new email composition gets its own frame!
+    ;; (setq mu4e-compose-in-new-frame t)
+
+    ;; don't save message to Sent Messages, IMAP takes care of this
+    (setq mu4e-sent-messages-behavior 'sent)
+
+    (add-hook 'mu4e-view-mode-hook #'visual-line-mode)
+
+    ;; <tab> to navigate to links, <RET> to open them in browser
+    (add-hook 'mu4e-view-mode-hook
+              (lambda()
+                ;; try to emulate some of the eww key-bindings
+                (local-set-key (kbd "<RET>") 'mu4e~view-browse-url-from-binding)
+                (local-set-key (kbd "<tab>") 'shr-next-link)
+                (local-set-key (kbd "<backtab>") 'shr-previous-link)))
+
+    ;; spell check
+    (add-hook 'mu4e-compose-mode-hook
+              (defun my-do-compose-stuff ()
+                "My settings for message composition."
+                (visual-line-mode)
+                ;; (org-mu4e-compose-org-mode)
+                (use-hard-newlines -1)
+                ;; (flyspell-mode)
+                ))
+
+    ;;rename files when moving
+    ;;NEEDED FOR MBSYNC
+    (setq mu4e-change-filenames-when-moving t)
+
+    ;; bookmarks
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Inbox GO"
+                    :query "maildir:\"/fastmail/Inbox GO\""
+                    :key   ?g))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Inbox Personal"
+                    :query "maildir:\"/fastmail/Inbox\""
+                    :key   ?p))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Sent Items"
+                    :query "maildir:\"/fastmail/Sent Items\""
+                    :key   ?s))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Memos"
+                    :query "\"maildir:/fastmail/Memos\""
+                    :key   ?m))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Waiting For Support"
+                    :query "\"maildir:/fastmail/@Waiting For Support\""
+                    :key   ?f))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Action Support"
+                    :query "\"maildir:/fastmail/@Action Support\""
+                    :key   ?a))
+    (add-to-list 'mu4e-bookmarks
+                 '( :name  "Inbox"
+                    :query "\"maildir:/fastmail/Inbox\" or \"maildir:/fastmail/Inbox GO\""
+                    :key   ?i))
+
+    ;; set mail user agent
+    (setq mail-user-agent 'mu4e-user-agent
+          message-mail-user-agent 'mu4e-user-agent)
+
+    ;; Setup mu4e contexts. This is to enable adding multiple email contexts if needed in the future.
+    ;; I will initially only enable my fastmail context but adding a new one shouldn't be harder than copying
+    ;; the existing context and modifying the settings.
+    (setq mu4e-context-policy 'pick-first)
+    (setq mu4e-compose-context-policy 'ask)
+    (setq mu4e-contexts
+          (list
+           (make-mu4e-context
+            :name "fastmail"
+            :enter-func (lambda () (mu4e-message "Entering context fastmail"))
+            :leave-func (lambda () (mu4e-message "Leaving context fastmail"))
+            :match-func (lambda (msg)
+                          (when msg
+                            (mu4e-message-contact-field-matches
+                             msg '(:from :to :cc :bcc) "srijan@fastmail.com")))
+            :vars '((user-mail-address . "srijan@fastmail.com")
+                    (mu4e-compose-signature . (concat "Srijan Choudhary\n" "https://srijan.ch\n"))
+                    (mu4e-compose-format-flowed . t)
+                    ))
+           (make-mu4e-context
+            :name "personal"
+            :enter-func (lambda () (mu4e-message "Entering context personal"))
+            :leave-func (lambda () (mu4e-message "Leaving context personal"))
+            :match-func (lambda (msg)
+                          (when msg
+                            (mu4e-message-contact-field-matches
+                             msg '(:from :to :cc :bcc) "srijan4@gmail.com")))
+            :vars '((user-mail-address . "srijan4@gmail.com")
+                    (mu4e-compose-signature . (concat "Srijan Choudhary\n" "https://srijan.ch\n"))
+                    (mu4e-compose-format-flowed . t)
+                    ))
+           (make-mu4e-context
+            :name "greyorange"
+            :enter-func (lambda () (mu4e-message "Entering context greyorange"))
+            :leave-func (lambda () (mu4e-message "Leaving context greyorange"))
+            :match-func (lambda (msg)
+                          (when msg
+                            (mu4e-message-contact-field-matches
+                             msg '(:from :to :cc :bcc) "srijan.c@greyorange.com")))
+            :vars '((user-mail-address . "srijan.c@greyorange.com")
+                    (mu4e-compose-signature . "Srijan Choudhary\n")
+                    (mu4e-compose-format-flowed . t)
+                    ))
+           ))
+
+    ;; Allow replying to calendar events
+    ;; https://www.djcbsoftware.nl/code/mu/mu4e/iCalendar.html
+    (require 'mu4e-icalendar)
+    (mu4e-icalendar-setup)
+    (setq mu4e-icalendar-trash-after-reply t)
+    (mu4e t) ;; Start mu4e in the background
+    )
+  (use-package mu4e-views
+    :disabled
+    )
+  (use-package org
+    :ensure nil
+    :bind (
+           :map mu4e-headers-mode-map
+           ("C-c i" . org-capture-mail)
+           ;; ("z m" . mu4e-view-mark-thread)
+           :map mu4e-view-mode-map
+           ("C-c i" . org-capture-mail))
+    )
+
+  (use-package org-msg
+    ;; Issues with mu 1.12 right now
+    :disabled
+    ;; :if my-linux-p
+    :config
+    (setq org-msg-options "html-postamble:nil H:5 num:nil ^:{} toc:nil author:nil email:nil \\n:t"
+          org-msg-startup "hidestars indent inlineimages"
+          org-msg-default-alternatives '((new             . (text html))
+                                         (reply-to-html   . (text html))
+                                         (reply-to-text   . (text)))
+          org-msg-convert-citation t
+          org-msg-signature "
+
+     ,#+begin_signature
+     --
+     ,*Srijan Choudhary*
+     ,#+end_signature")
+    (org-msg-mode)
+    )
+
+  (use-package smtpmail
+    ;; :if my-linux-p
+    :ensure nil
+    :config
+
+    (setq sendmail-program "/opt/homebrew/bin/msmtp"
+          send-mail-function 'smtpmail-send-it
+          message-sendmail-f-is-evil t
+          ;; This allows msmtp to automatically choose the correct account
+          ;; based on from header.
+          message-sendmail-extra-arguments '("--read-envelope-from")
+          message-send-mail-function 'message-send-mail-with-sendmail
+          smtpmail-debug-info t
+          smtpmail-debug-verbose t
+          )
+
+    (setq smtpmail-queue-mail nil)
+    (setq smtpmail-queue-dir "~/Maildir/queue/cur")
+    )
 #+end_src
