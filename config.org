@@ -110,7 +110,7 @@ This file has the config that has to be loaded before the rest of the minimal-em
     (elpaca-use-package-mode))
 
   ;; Lock file
-  (setq elpaca-lock-file (expand-file-name "elpaca-lock.eld" minimal-emacs-user-directory))
+  ;; (setq elpaca-lock-file (expand-file-name "elpaca-lock.eld" minimal-emacs-user-directory))
 #+end_src
 
 * post-init
@@ -1194,7 +1194,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
                eglot-rename
                eglot-format-buffer))
 
-  (use-package eldoc :diminish eldoc-mode)
+  (use-package eldoc
+    :ensure nil
+    :diminish eldoc-mode)
 #+end_src
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
