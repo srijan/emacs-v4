@@ -216,7 +216,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   ;; code, which overrides `pixel-scroll-precision-mode'. In this case, use the
   ;; following line instead of enabling `pixel-scroll-precision-mode':
   ;;
-  ;; (pixel-scroll-mode 1)
+  ;; (pixel-scroll-mode t)
   ;;
   ;; For more details, see:
   ;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
@@ -249,6 +249,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 
   (setq save-interprogram-paste-before-kill t)
 
+  (setq global-visual-line-mode t)
+
 #+end_src
 ** Which-Key
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -278,18 +280,27 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (add-to-list 'default-frame-alist '(height . 55))
   (add-to-list 'default-frame-alist '(width . 160))
 
+  ;; Fast and smooth scrolling
+  (use-package ultra-scroll
+    :ensure (:host github :repo "jdtsmith/ultra-scroll")
+    :init
+    (setq scroll-conservatively 101 ; important!
+          scroll-margin 0)
+    :config
+    (ultra-scroll-mode 1))
+
   (use-package fontaine
     :custom
     (fontaine-presets
      '(
-       (iosevka-regular
-        :default-family "Iosevka Comfy"
-        :default-height 150
-        :variable-pitch-family "Iosevka Comfy Duo"
+       (aporetic-regular
+        :default-family "Aporetic Sans Mono"
+        :default-height 130
+        :variable-pitch-family "Aporetic Sans"
         )
        (iawriter-regular
         :default-family "iMWritingMono Nerd Font"
-        :default-height 150
+        :default-height 130
         :line-spacing 0.1
         :variable-pitch-family "iMWritingDuo Nerd Font Propo"
         ;; :variable-pitch-family "Merriweather Sans Light"
@@ -359,7 +370,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
          `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
          `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
     :init
-    (ef-themes-select 'ef-dream)
+    (ef-themes-select 'ef-maris-light)
     )
   (use-package olivetti
     :custom
@@ -367,6 +378,14 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq olivetti-fringe '(:background "#e5e5e5"))
     )
   (use-package spacious-padding)
+#+end_src
+** Tool Bar
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (setq tool-bar-style 'image)
+  ;; (tool-bar-mode 1)
+  (use-package tool-bar+
+    :ensure (:host github :repo "emacsmirror/tool-bar-plus")
+    )
 #+end_src
 ** Windows
 #+BEGIN_SRC emacs-lisp :tangle "post-init.el"
@@ -1367,136 +1386,6 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :ensure t
     :after kubernetes)
 #+end_src
-** Feeds
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package elfeed
-    :ensure
-    :custom
-    (elfeed-use-curl t)
-    (elfeed-log-level 'debug)
-    :config
-    (elfeed-set-timeout 36000)
-    )
-  (use-package elfeed-protocol
-    :custom
-    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.p.nwdr.io"
-                              :api-url "https://miniflux.p.nwdr.io/fever/"
-                              :password (lambda ()
-                                          (auth-source-pick-first-password :host "miniflux.p.nwdr.io" :user "fever")))))
-    (elfeed-protocol-enabled-protocols '(fever))
-    ;; (auth-source-search :host "miniflux.p.nwdr.io" :port "443" :user "emacs")
-    ;; (elfeed-protocol-log-trace t)
-    ;; (elfeed-protocol-fever-maxsize 10)
-    ;; (elfeed-protocol-newsblur-maxpages 1)
-    ;; (elfeed-protocol-owncloud-maxsize 10)
-    ;; (elfeed-protocol-ttrss-maxsize 10)
-    :config
-    (elfeed-protocol-enable)
-    )
-  (use-package elfeed-webkit
-    :ensure
-    :hook (evil-collection-setup . (lambda (&rest a)
-                                     (evil-define-key 'normal elfeed-show-mode-map "z%" 'elfeed-webkit-toggle)
-                                     ))
-    )
-
-  ;; (elfeed-protocol-fever-get-update-mark "fever+https://srijan@miniflux.p.nwdr.io" 'update)
-
-  ;; (let* ((proto-id "fever+https://srijan@miniflux.p.nwdr.io")
-  ;;      (last-id (elfeed-protocol-fever-get-update-mark proto-id 'update)))
-  ;; (elfeed-protocol-fever-set-update-mark  proto-id 'update (- last-id 49252)))
-  ;; (setq my-elfeed-update-timer
-  ;;       (run-at-time 15 15
-  ;;                    (lambda () (when (= elfeed-curl-queue-active 0)
-  ;;                                 (elfeed-update)))))
-  ;; (cancel-timer my-elfeed-update-timer)
-
-  ;; (cl-loop for entry in (elfeed-search-selected)
-  ;;          do (elfeed-untag-1 entry 'unread))
-
-  #+END_SRC
-** JIRA
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package jira
-    :ensure (:host github :repo "unmonoqueteclea/jira.el")
-    :config
-    (setq jira-base-url "https://work.greyorange.com/jira")
-    (setq jira-username "srijan.c@greyorange.com")
-    (setq jira-token (auth-source-pick-first-password
-                      :host "work.greyorange.com-jira" :user "credential"))
-    (setq jira-debug t)
-    (defun jira-api--auth-header (username token)
-      "Generate the Authorization header for Jira requests with USERNAME and TOKEN."
-      (format "Bearer %s" token t))
-    (defun jira-api--url (base-url)
-      "Generate the full URL from BASE-URL for Jira API requests."
-      (concat base-url "/rest/api/2/"))
-    (cl-defun jira-detail--issue (key issue)
-      "Show the detail information of the ISSUE with KEY."
-      (with-current-buffer (get-buffer-create (concat "*Jira Issue Detail: [" key "]*"))
-        (magit-section-mode)
-        ;; avoid horizontal scroll
-        (setq truncate-lines nil)
-        (visual-line-mode 1)
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          ;; section: Jira Issue Summary
-          (magit-insert-section (jira-issue-summary nil nil)
-            (magit-insert-heading "Jira Issue Summary")
-            (magit-insert-section-body (jira-detail--issue-summary issue)))
-          (insert "\n")
-          ;; section: Information
-          (magit-insert-section (jira-issue-information nil nil)
-            ;; section: Team Data
-            ;; section: Manager Data
-            (magit-insert-section (manager-data nil nil)
-              (magit-insert-heading "Manager Data")
-              (magit-insert-section-body
-                (jira-detail--issue-manager-data issue)
-                (insert "\n")))
-            ;; section: Description
-            (magit-insert-section (description nil nil)
-              (magit-insert-heading "Description")
-              (magit-insert-section-body
-                (jira-detail--description issue)))))
-        (pop-to-buffer (current-buffer))))
-    (defun jira-doc-format (doc)
-      "Format DOC in Jira Document Format to a string."
-      (jira-doc--list-to-str (list doc) "\n"))
-    (defun jira-detail--issue-manager-data (issue)
-      "Show the manager data of the ISSUE."
-      (let ((priority (jira-detail--issue-fmt issue :priority-name))
-            (labels (jira-detail--issue-fmt issue :labels))
-            (assignee (jira-detail--issue-fmt issue :assignee-name))
-            (reporter (jira-detail--issue-fmt issue :reporter-name)))
-        (insert (jira-detail--header "Priority") priority "\n")
-        (insert (jira-detail--header "Labels") labels "\n")
-        (insert (jira-detail--header "Assignee")  assignee "\n")
-        (insert (jira-detail--header "Reporter") reporter "\n")))
-    )
-
-#+end_src
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package org-jira
-    :config
-    (setq jiralib-url "https://work.greyorange.com/jira")
-    (setq jiralib-token (cons "Authorization"
-                              (concat "Bearer " (auth-source-pick-first-password
-                                                 :host "work.greyorange.com-jira" :user "credential"))))
-    )
-#+end_src
-** COMMENT Mastodon
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package emojify)
-  ;; (:hook (after-init . global-emojify-mode))
-  (use-package mastodon
-    ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
-    :ensure t
-    :config
-    (setq mastodon-instance-url "https://indieweb.social"
-          mastodon-active-user "srijan")
-    )
- #+end_src
 ** mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package gnus
@@ -1729,7 +1618,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :ensure nil
     :config
 
-    (setq sendmail-program "/opt/homebrew/bin/msmtp"
+    (setq sendmail-program "/usr/bin/msmtp"
           send-mail-function 'smtpmail-send-it
           message-sendmail-f-is-evil t
           ;; This allows msmtp to automatically choose the correct account
@@ -1739,8 +1628,331 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
           smtpmail-debug-info t
           smtpmail-debug-verbose t
           )
+    (when (eq system-type 'darwin)
+      (setq sendmail-program "/opt/homebrew/bin/msmtp"))
 
     (setq smtpmail-queue-mail nil)
     (setq smtpmail-queue-dir "~/Maildir/queue/cur")
     )
+#+end_src
+** Feeds
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package elfeed
+    :ensure
+    :custom
+    (elfeed-use-curl t)
+    (elfeed-log-level 'debug)
+    :config
+    (elfeed-set-timeout 36000)
+
+    ;; Custom browse url for elfeed
+    (defun sj-browse-url(url &optional _)
+      "Try to open URL using mastodon-url-lookup, otherwise eww.
+       mastodon.el already opens non-mastodon URLs in the default browser.
+       So, we need to temporarily override the default browser.
+
+       Additionally, if running in elfeed-search-mode or elfeed-show-mode,
+       pass t in the 2nd argument of mastodon-url-lookup. This is for some
+       fedi-enabled sites that I follow that don't follow the standard
+       fediverse URL structure patterns (like my own site)."
+      (let ((browse-url-browser-function #'eww-browse-url))
+        (mastodon-url-lookup url (derived-mode-p 'elfeed-search-mode 'elfeed-show-mode))))
+    (setq browse-url-browser-function #'sj-browse-url)
+
+    (defun sj-elfeed-hard-refresh()
+      "Performs a hard-refresh of the elfeed database and fetching everything from scratch"
+      "Unload elfeed db, delete the directory, fever-reinit, and then open elfeed again
+       Ask yes or no"
+      (interactive)
+      (when (yes-or-no-p "This will delete your elfeed database and re-fetch everything. Are you sure? ")
+        (message "Deleting elfeed database...")
+        (elfeed-db-unload)
+        (delete-directory (expand-file-name elfeed-db-directory) t)
+        (dolist (feed (elfeed-protocol-feed-list))
+          (elfeed-protocol-fever-reinit (elfeed-protocol-url feed)))
+        (elfeed)
+        ))
+
+    (defun sj-elfeed-search-toolbar ()
+      (setq-local tool-bar-map (make-sparse-keymap))
+      (tool-bar-local-item "open" 'elfeed-search-show-entry 'elfeed-open-button tool-bar-map
+                           :help "Show Entry"
+                           :vert-only t)
+      (tool-bar-local-item "refresh" 'elfeed-search-update--force 'elfeed-view-refresh-button tool-bar-map
+                           :help "Refresh the view"
+                           :vert-only t)
+      (tool-bar-local-item "newsticker/get-all" 'elfeed-search-fetch 'elfeed-update-button tool-bar-map
+                           :help "Update elfeed sources"
+                           :vert-only t)
+      (tool-bar-local-item "search" 'elfeed-search-live-filter 'elfeed-search-button tool-bar-map
+                           :help "Change elfeed display filter"
+                           :vert-only t)
+      (define-key-after tool-bar-map [separator-1] menu-bar-separator)
+      (tool-bar-local-item "close" 'elfeed-search-quit-window 'elfeed-close-button tool-bar-map
+                           :help "Close elfeed"
+                           :vert-only t)
+      (tool-bar-local-item "exit" 'kill-current-buffer 'elfeed-quit-button tool-bar-map
+                           :help "Completely quit elfeed"
+                           :vert-only t)
+      (define-key-after tool-bar-map [separator-2] menu-bar-separator)
+      (tool-bar-local-item "connect" 'sj-elfeed-hard-refresh 'elfeed-hard-refresh-button tool-bar-map
+                           :help "Hard refresh elfeed"
+                           :vert-only t)
+      )
+    (add-hook 'elfeed-search-mode-hook #'sj-elfeed-search-toolbar)
+
+    (defun sj-elfeed-show-toolbar ()
+      (setq-local tool-bar-map (make-sparse-keymap))
+      (tool-bar-local-item "prev-node" 'elfeed-show-prev 'elfeed-show-prev-button tool-bar-map
+                           :help "Previous Page"
+                           :vert-only t)
+      (tool-bar-local-item "next-node" 'elfeed-show-next 'elfeed-show-next-button tool-bar-map
+                           :help "Next Page"
+                           :vert-only t)
+      (tool-bar-local-item "newsticker/browse-url" 'elfeed-show-visit 'elfeed-browse-button tool-bar-map
+                           :help "Browse URL"
+                           :vert-only t)
+      (tool-bar-local-item "close" 'elfeed-kill-buffer 'elfeed-kill-buffer-button tool-bar-map
+                           :help "Kill buffer"
+                           :vert-only t)
+      )
+    (add-hook 'elfeed-show-mode-hook #'sj-elfeed-show-toolbar)
+
+    (defun sj-elfeed-search-setup-toolbar ()
+      "When elfeed-search-mode starts, enable tool-bar-here-mode, and setup a
+       hook so that tool-bar-mode is disabled when the buffer is killed."
+      (tool-bar-here-mode 1)
+      (if (= 1 (length (default-value 'tool-bar-map))) (tool-bar-setup)) ;; had to add this for non-empty default toolbars
+      (add-hook 'kill-buffer-hook #'(lambda() (tool-bar-here-mode -1)) -10 t))
+    (add-hook 'elfeed-search-mode-hook #'sj-elfeed-search-setup-toolbar)
+
+    )
+  (use-package elfeed-protocol
+    :custom
+    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.p.nwdr.io"
+                              :api-url "https://miniflux.p.nwdr.io/fever/"
+                              :password (lambda ()
+                                          (auth-source-pick-first-password :host "miniflux.p.nwdr.io" :user "fever")))))
+    (elfeed-protocol-enabled-protocols '(fever))
+    ;; (auth-source-search :host "miniflux.p.nwdr.io" :port "443" :user "emacs")
+    ;; (elfeed-protocol-log-trace t)
+    ;; (elfeed-protocol-fever-maxsize 10)
+    ;; (elfeed-protocol-newsblur-maxpages 1)
+    ;; (elfeed-protocol-owncloud-maxsize 10)
+    ;; (elfeed-protocol-ttrss-maxsize 10)
+    :config
+    (elfeed-protocol-enable)
+    )
+  (use-package elfeed-webkit
+    :ensure
+    :hook (evil-collection-setup . (lambda (&rest a)
+                                     (evil-define-key 'normal elfeed-show-mode-map "z%" 'elfeed-webkit-toggle)
+                                     ))
+    )
+
+  ;; (elfeed-protocol-fever-get-update-mark "fever+https://srijan@miniflux.p.nwdr.io" 'update)
+
+  ;; (let* ((proto-id "fever+https://srijan@miniflux.p.nwdr.io")
+  ;;      (last-id (elfeed-protocol-fever-get-update-mark proto-id 'update)))
+  ;; (elfeed-protocol-fever-set-update-mark  proto-id 'update (- last-id 49252)))
+  ;; (setq my-elfeed-update-timer
+  ;;       (run-at-time 15 15
+  ;;                    (lambda () (when (= elfeed-curl-queue-active 0)
+  ;;                                 (elfeed-update)))))
+  ;; (cancel-timer my-elfeed-update-timer)
+
+  ;; (cl-loop for entry in (elfeed-search-selected)
+  ;;          do (elfeed-untag-1 entry 'unread))
+
+  #+END_SRC
+** JIRA
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package jira
+    :ensure (:host github :repo "unmonoqueteclea/jira.el")
+    :config
+    (with-eval-after-load "evil"
+      (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
+      (evil-define-key 'normal jira-issues-mode-map "gi"
+        (lambda () (interactive)
+          (jira-detail-show-issue (jira-utils-marked-item))))
+      (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
+      (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
+      )
+    
+    
+    (setq jira-base-url "https://work.greyorange.com/jira")
+    (setq jira-username "srijan.c@greyorange.com")
+    (setq jira-token (auth-source-pick-first-password
+                      :host "work.greyorange.com-jira" :user "credential"))
+    (setq jira-debug t)
+    (defun jira-api--auth-header (username token)
+      "Generate the Authorization header for Jira requests with USERNAME and TOKEN."
+      (format "Bearer %s" token t))
+    (defun jira-api--url (base-url)
+      "Generate the full URL from BASE-URL for Jira API requests."
+      (concat base-url "/rest/api/2/"))
+    (cl-defun jira-detail--issue (key issue)
+      "Show the detail information of the ISSUE with KEY."
+      (with-current-buffer (get-buffer-create (concat "*Jira Issue Detail: [" key "]*"))
+        (magit-section-mode)
+        ;; avoid horizontal scroll
+        (setq truncate-lines nil)
+        (visual-line-mode 1)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          ;; section: Jira Issue Summary
+          (magit-insert-section (jira-issue-summary nil nil)
+            (magit-insert-heading "Jira Issue Summary")
+            (magit-insert-section-body (jira-detail--issue-summary issue)))
+          (insert "\n")
+          ;; section: Information
+          (magit-insert-section (jira-issue-information nil nil)
+            ;; section: Team Data
+            ;; section: Manager Data
+            (magit-insert-section (manager-data nil nil)
+              (magit-insert-heading "Manager Data")
+              (magit-insert-section-body
+                (jira-detail--issue-manager-data issue)
+                (insert "\n")))
+            ;; section: Description
+            (magit-insert-section (description nil nil)
+              (magit-insert-heading "Description")
+              (magit-insert-section-body
+                (jira-detail--description issue)))))
+        (pop-to-buffer (current-buffer))))
+    (defun jira-doc-format (doc)
+      "Format DOC in Jira Document Format to a string."
+      (jira-doc--list-to-str (list doc) "\n"))
+    (defun jira-detail--issue-manager-data (issue)
+      "Show the manager data of the ISSUE."
+      (let ((priority (jira-detail--issue-fmt issue :priority-name))
+            (labels (jira-detail--issue-fmt issue :labels))
+            (assignee (jira-detail--issue-fmt issue :assignee-name))
+            (reporter (jira-detail--issue-fmt issue :reporter-name)))
+        (insert (jira-detail--header "Priority") priority "\n")
+        (insert (jira-detail--header "Labels") labels "\n")
+        (insert (jira-detail--header "Assignee")  assignee "\n")
+        (insert (jira-detail--header "Reporter") reporter "\n")))
+    )
+
+#+end_src
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org-jira
+    :config
+    (setq jiralib-url "https://work.greyorange.com/jira")
+    (setq jiralib-token (cons "Authorization"
+                              (concat "Bearer " (auth-source-pick-first-password
+                                                 :host "work.greyorange.com-jira" :user "credential"))))
+    )
+#+end_src
+** Slack
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package slack
+    :bind (("C-c s K" . slack-stop)
+           ("C-c s c" . slack-select-rooms)
+           ("C-c s u" . slack-select-unread-rooms)
+           ("C-c s U" . slack-user-select)
+           ("C-c s s" . slack-search-from-messages)
+           ("C-c s J" . slack-jump-to-browser)
+           ("C-c s j" . slack-jump-to-app)
+           ("C-c s e" . slack-insert-emoji)
+           ("C-c s E" . slack-message-edit)
+           ("C-c s r" . slack-message-add-reaction)
+           ("C-c s t" . slack-all-threads)
+           ("C-c s g" . slack-message-redisplay)
+           ("C-c s G" . slack-conversations-list-update-quick)
+           ("C-c s q" . slack-quote-and-reply)
+           ("C-c s Q" . slack-quote-and-reply-with-link)
+           (:map slack-mode-map
+                 (("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-thread-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)
+                  ("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)))
+           (:map slack-message-compose-buffer-mode-map
+                 (("C-c '" . slack-message-send-from-buffer)))
+           )
+    :config
+    (setq slack-prefer-current-team t)
+    (setq slack-enable-global-mode-string t)
+    (setq slack-buffer-function 'switch-to-buffer)
+    (slack-register-team
+     :name "greyorange"
+     :default t
+     :modeline-enabled t
+     :token (auth-source-pick-first-password
+             :host "work-slack-tokens"
+             :user "token")
+     :cookie (auth-source-pick-first-password
+              :host "work-slack-tokens"
+              :user "cookie"))
+    )
+  (use-package alert
+    :commands (alert)
+    :init
+    (require 'notifications)
+    (setq alert-default-style 'notifications))
+
+#+end_src
+** Mastodon
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package emojify)
+  ;; (:hook (after-init . global-emojify-mode))
+  (use-package mastodon
+    ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
+    :ensure t
+    :config
+    (setq mastodon-instance-url "https://indieweb.social"
+          mastodon-active-user "srijan")
+    )
+ #+end_src
+** Reddit
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package md4rd
+    :config
+    (defun md4rd-open-post (url &rest _args)
+      (md4rd--fetch-comments (concat (string-replace "www" "old" url) ".json")))
+    )
+  (use-package eww
+    :ensure nil
+    :preface
+    (defvar apt-reddit-url-regex
+      (rx line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
+    (defun apt-open-reddit-if-url-matches ()
+      (when (string-match-p apt-reddit-url-regex (or (eww-current-url) ""))
+        (md4rd-open-post (eww-current-url))))
+    :hook ((eww-after-render-hook . apt-open-reddit-if-url-matches))
+    )
+
+#+end_src
+** Desktop Utilities
+
+- A script to set the default browser on Linux:
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defun sj/default-browser (&optional name)
+    "Set the default browser based on the given NAME."
+    (interactive
+     (list
+      (completing-read
+       "Browser: "
+       (split-string
+        (shell-command-to-string
+         "find /usr/share/applications ~/.local/share/applications -name \"*.desktop\" -exec grep -l \"Categories=.*WebBrowser\" {} \\;")
+        "\n" t))))
+    (let ((browser-desktop (file-name-nondirectory name)))
+      (shell-command (format "xdg-mime default %s text/html" browser-desktop))
+      (shell-command (format "xdg-mime default %s application/xhtml+xml" browser-desktop))
+      (shell-command (format "xdg-mime default %s application/x-extension-html" browser-desktop))
+      (shell-command (format "xdg-settings set default-web-browser %s" browser-desktop))))
+
+  (defun gpg-sign (&optional text)
+    "Sign the given TEXT with GPG, and copy the results to the clipboard."
+        (interactive "sText to sign: ")
+        (let ((gpg-signature (shell-command-to-string (format "echo '%s' | gpg --clearsign --armor" text))))
+          (kill-new gpg-signature)
+          (message "GPG signature copied to clipboard.")))
+
 #+end_src
