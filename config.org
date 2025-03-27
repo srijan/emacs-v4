@@ -814,8 +814,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 
   (add-hook 'term-mode-hook 'bb/setup-term-mode)
 
-  ;; (when my-linux-p
-  ;;   (use-package vterm))
+  (when my-linux-p
+    (use-package multi-term))
 
   (when my-windows-p
     (use-package powershell))
@@ -1312,6 +1312,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package yasnippet
     :diminish (yas-minor-mode)
+    :custom
+    (yas-snippet-dirs (list (expand-file-name "snippets" minimal-emacs-user-directory)))
     :config
     (yas-global-mode t)
     )
@@ -1329,47 +1331,49 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (add-to-list
      'load-path (car (file-expand-wildcards
                       "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
-  (use-package erlang
-    :ensure nil
-    :demand t
-    :hook ((erlang-mode . display-line-numbers-mode)
-           (erlang-mode . column-number-mode))
-    :init
-    )
-  (require 'erlang-start)
-  (use-package indy
-    :disabled
-    :custom
-    (setq indy-rules
-          '((erlang-mode . (
-                            ;; ((indy--current 'indy--starts-with "]") (indy--prev-tab -1))
-                            ;; ((indy--prev    'indy--ends-on "[")     (indy--prev-tab 1))
-                            ;; ((indy--prev    'indy--ends-on ",")     (indy--prev-tab))
+  (when (not 'my-phone-p)
+    (use-package erlang
+      :ensure nil
+      :demand t
+      :hook ((erlang-mode . display-line-numbers-mode)
+             (erlang-mode . column-number-mode))
+      :init
+      )
+    (require 'erlang-start)
+    (use-package indy
+      :disabled
+      :custom
+      (setq indy-rules
+            '((erlang-mode . (
+                              ;; ((indy--current 'indy--starts-with "]") (indy--prev-tab -1))
+                              ;; ((indy--prev    'indy--ends-on "[")     (indy--prev-tab 1))
+                              ;; ((indy--prev    'indy--ends-on ",")     (indy--prev-tab))
 
-  			              ((and (indy--current 'indy--starts-with "end")
-  				                (indy--prev 'indy--ends-on ") ->"))      (indy--prev-tab))
-  			              ((indy--current 'indy--starts-with "end") (indy--prev-tab -1))
-  			              ((indy--prev 'indy--ends-on ") ->")       (indy--prev-tab 1))
-  			              ((indy--current 'indy--starts-with "]")   (indy--prev-tab -1))
-  			              ((indy--prev 'indy--ends-on "[")          (indy--prev-tab 1))
-  			              ((indy--prev 'indy--ends-on ",")          (indy--prev-tab))
-  			              ))
-  	      )
-          ))
-  (use-package elixir-mode)
+  			                ((and (indy--current 'indy--starts-with "end")
+  				                  (indy--prev 'indy--ends-on ") ->"))      (indy--prev-tab))
+  			                ((indy--current 'indy--starts-with "end") (indy--prev-tab -1))
+  			                ((indy--prev 'indy--ends-on ") ->")       (indy--prev-tab 1))
+  			                ((indy--current 'indy--starts-with "]")   (indy--prev-tab -1))
+  			                ((indy--prev 'indy--ends-on "[")          (indy--prev-tab 1))
+  			                ((indy--prev 'indy--ends-on ",")          (indy--prev-tab))
+  			                ))
+  	        )
+            ))
+    (use-package elixir-mode)
 
-  (use-package eglot
-    :ensure nil
-    :hook (erlang-mode . eglot-ensure)
-    :config
-    (add-hook 'eglot-managed-mode-hook
-              (lambda ()
-                ;; Show flymake diagnostics first.
-                (setq eldoc-documentation-functions
-                      (cons #'flymake-eldoc-function
-                            (remove #'flymake-eldoc-function eldoc-documentation-functions)))
-                ;; Show all eldoc feedback.
-                (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
+    (use-package eglot
+      :ensure nil
+      :hook (erlang-mode . eglot-ensure)
+      :config
+      (add-hook 'eglot-managed-mode-hook
+                (lambda ()
+                  ;; Show flymake diagnostics first.
+                  (setq eldoc-documentation-functions
+                        (cons #'flymake-eldoc-function
+                              (remove #'flymake-eldoc-function eldoc-documentation-functions)))
+                  ;; Show all eldoc feedback.
+                  (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
+      )
     )
 #+END_SRC
 ** Docker and Kubernetes
