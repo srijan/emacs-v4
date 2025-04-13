@@ -1787,71 +1787,18 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
       (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
       )
     
-    
     (setq jira-base-url "https://work.greyorange.com/jira")
     (setq jira-username "srijan.c@greyorange.com")
-    (setq jira-token (auth-source-pick-first-password
-                      :host "work.greyorange.com-jira" :user "credential"))
+    (setq jira-token-is-personal-access-token t)
+    (setq jira-api-version 2)
+    (setq jira-issues-table-fields
+          '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
     (setq jira-debug t)
-    (defun jira-api--auth-header (username token)
-      "Generate the Authorization header for Jira requests with USERNAME and TOKEN."
-      (format "Bearer %s" token t))
-    (defun jira-api--url (base-url)
-      "Generate the full URL from BASE-URL for Jira API requests."
-      (concat base-url "/rest/api/2/"))
-    (cl-defun jira-detail--issue (key issue)
-      "Show the detail information of the ISSUE with KEY."
-      (with-current-buffer (get-buffer-create (concat "*Jira Issue Detail: [" key "]*"))
-        (magit-section-mode)
-        ;; avoid horizontal scroll
-        (setq truncate-lines nil)
-        (visual-line-mode 1)
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          ;; section: Jira Issue Summary
-          (magit-insert-section (jira-issue-summary nil nil)
-            (magit-insert-heading "Jira Issue Summary")
-            (magit-insert-section-body (jira-detail--issue-summary issue)))
-          (insert "\n")
-          ;; section: Information
-          (magit-insert-section (jira-issue-information nil nil)
-            ;; section: Team Data
-            ;; section: Manager Data
-            (magit-insert-section (manager-data nil nil)
-              (magit-insert-heading "Manager Data")
-              (magit-insert-section-body
-                (jira-detail--issue-manager-data issue)
-                (insert "\n")))
-            ;; section: Description
-            (magit-insert-section (description nil nil)
-              (magit-insert-heading "Description")
-              (magit-insert-section-body
-                (jira-detail--description issue)))))
-        (pop-to-buffer (current-buffer))))
-    (defun jira-doc-format (doc)
-      "Format DOC in Jira Document Format to a string."
-      (jira-doc--list-to-str (list doc) "\n"))
-    (defun jira-detail--issue-manager-data (issue)
-      "Show the manager data of the ISSUE."
-      (let ((priority (jira-detail--issue-fmt issue :priority-name))
-            (labels (jira-detail--issue-fmt issue :labels))
-            (assignee (jira-detail--issue-fmt issue :assignee-name))
-            (reporter (jira-detail--issue-fmt issue :reporter-name)))
-        (insert (jira-detail--header "Priority") priority "\n")
-        (insert (jira-detail--header "Labels") labels "\n")
-        (insert (jira-detail--header "Assignee")  assignee "\n")
-        (insert (jira-detail--header "Reporter") reporter "\n")))
+    (defun jira-api--token (host)
+      (auth-source-pick-first-password
+       :host "work.greyorange.com-jira" :user "credential"))
     )
 
-#+end_src
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package org-jira
-    :config
-    (setq jiralib-url "https://work.greyorange.com/jira")
-    (setq jiralib-token (cons "Authorization"
-                              (concat "Bearer " (auth-source-pick-first-password
-                                                 :host "work.greyorange.com-jira" :user "credential"))))
-    )
 #+end_src
 ** Slack
 #+begin_src emacs-lisp :tangle "post-init.el"
