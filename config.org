@@ -1041,14 +1041,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package denote
     ;; :demand
-    :ensure (:ref "3.1.0")
-    :init
-    (require 'denote-journal-extras)
     :custom
     (denote-directory (expand-file-name "~/ndxrd-uxxs3/notes/"))
-    (denote-journal-extras-directory (expand-file-name "~/ndxrd-uxxs3/notes/journals/"))
     (denote-known-keywords '("emacs" "philosophy" "politics" "economics"))
-    (denote-journal-extras-title-format 'day-date-month-year)
     (denote-file-type 'markdown-yaml)
     (denote-infer-keywords t)
     (denote-sort-keywords t)
@@ -1086,12 +1081,20 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     ;;            ("C-c n d" . (dired-jump denote-directory)))
     :bind
     ("C-c n n" . denote)
-    ("C-c n j" . denote-journal-extras-new-or-existing-entry)
     ("C-c n r" . my-weekly-review-journal)
+    )
+  (use-package denote-journal
+    :after denote
+    :custom
+    (denote-journal-directory (expand-file-name "~/ndxrd-uxxs3/notes/journals/"))
+    (denote-journal-title-format 'day-date-month-year)
+    :bind
+    ("C-c n j" . denote-journal-new-or-existing-entry)
     )
   (use-package denote-menu
     :after denote)
   (use-package consult-notes
+    :after denote
     :init
     (require 'denote)
     :config
