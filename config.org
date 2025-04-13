@@ -1136,6 +1136,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
       (pcase (treemacs-current-visibility)
         (`visible (delete-window (treemacs-get-local-window)))
         (_ (treemacs-add-and-display-current-project))))
+    (treemacs-project-follow-mode 1)
     :custom
     (treemacs-follow-after-init t)
     (treemacs-is-never-other-window t)
@@ -1442,7 +1443,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
      mu4e-hide-index-messages t
      message-kill-buffer-on-exit t
      shr-color-visible-luminance-min 80
-     mu4e-index-cleanup nil
+     mu4e-index-cleanup t ;; set to nil if indexing is slow
      )
 
 
