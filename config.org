@@ -292,8 +292,12 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (add-to-list 'default-frame-alist '(height . 55))
   (add-to-list 'default-frame-alist '(width . 160))
 
+  ;; (setq-default cursor-type 'bar)
+  (scroll-bar-mode 1)
+
   ;; Fast and smooth scrolling
   (use-package ultra-scroll
+    :disabled
     :ensure (:host github :repo "jdtsmith/ultra-scroll")
     :init
     (setq scroll-conservatively 101 ; important!
@@ -302,6 +306,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (ultra-scroll-mode 1))
 
   (use-package fontaine
+    :disabled
     :custom
     (fontaine-presets
      `(
@@ -351,8 +356,10 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :bind (("C-c e" . emoji-search))
     )
 
+  (load-theme 'modus-vivendi-tinted t)
   (use-package ef-themes
     :if (display-graphic-p)
+    :disabled
     :demand
     :custom
     (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
@@ -378,11 +385,12 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (ef-themes-select 'ef-maris-light)
     )
   (use-package olivetti
+    :bind (("C-c =" . olivetti-mode))
     :custom
     (olivetti-style 'fancy)
-    (setq olivetti-fringe '(:background "#e5e5e5"))
+    ;; (olivetti-fringe '(:background "#e5e5e5"))
     )
-  (use-package spacious-padding)
+  ;; (use-package spacious-padding)
 #+end_src
 ** Tool Bar
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -626,7 +634,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (add-hook 'completion-at-point-functions #'cape-file)
     (add-hook 'completion-at-point-functions #'cape-elisp-block))
 #+end_src
-** Evil
+** COMMENT Evil
 
 #+begin_src emacs-lisp :tangle "post-init.el"
 
@@ -753,9 +761,16 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package diminish
     :config (require 'diminish))
+  (use-package timu-line
+    :disabled
+    :ensure t
+    :demand t
+    :config
+    (timu-line-mode 1))
   (use-package all-the-icons)
-  (use-package nerd-icons)
+  ;;(use-package nerd-icons)
   (use-package doom-modeline
+    :disabled
     :ensure t
     :init
     (doom-modeline-mode 1))
@@ -782,7 +797,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq delete-by-moving-to-trash t)
     (setq dired-listing-switches
           "-l --almost-all --human-readable --group-directories-first --no-group")
-    (evil-make-overriding-map dirvish-mode-map 'normal)
+    ;; (evil-make-overriding-map dirvish-mode-map 'normal)
     :bind ; Bind `dirvish|dirvish-side|dirvish-dwim' as you see fit
     (("C-c f" . dirvish)
      :map dirvish-mode-map ; Dirvish inherits `dired-mode-map'
@@ -804,7 +819,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
      ("M-e" . dirvish-emerge-menu)
      ("M-j" . dirvish-fd-jump)))
 #+end_src
-** Elpaca Sync
+** COMMENT Elpaca Sync
 #+begin_src emacs-lisp :tangle "post-init.el"
   (elpaca-process-queues)
 #+end_src
@@ -825,8 +840,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (when my-windows-p
     (use-package powershell))
 
-  (use-package eat
-    :defer t)
+  (use-package eat)
   ;; (straight-use-package
   ;;  '(eat :type git
   ;;        :host codeberg
@@ -842,8 +856,10 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
     :ensure nil
-    :hook ((org-capture-mode . delete-other-windows)
-           (org-capture-mode . evil-insert-state))
+    :hook ((after-init . org-mode)
+           (org-capture-mode . delete-other-windows)
+           ;; (org-capture-mode . evil-insert-state)
+           )
     :custom
     (org-support-shift-select t)
     (org-agenda-files nil) ;; Will be set automatically by org-gtd
@@ -876,7 +892,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (require 'org-tempo)
     ;; (setq org-agenda-prefix-format '((agenda . " %i %-12:c%?-12t%-6e% s")))
     ;; So that we can jump back
-    (advice-add 'org-open-at-point :before #'evil-set-jump)
+    ;; (advice-add 'org-open-at-point :before #'evil-set-jump)
 
     ;; Clock stuff
     (org-clock-persistence-insinuate)
@@ -908,6 +924,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     ("C-c j" . org-open-inbox)
     ("C-c a" . org-agenda)
     ("C-c l" . org-store-link)
+    (:map org-mode-map
+          ("C-c ;" . nil))
     )
   (use-package org-protocol
     :ensure nil
@@ -926,8 +944,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
       (org-set-effort)))
 
   (use-package org-contrib
-    :config
-    (require 'ox-confluence)
+    :defer t
+    ;; :config
+    ;; (require 'ox-confluence)
     )
 
   (defun my-org-gtd-archive-item-at-point ()
@@ -951,7 +970,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     ;; :straight (:type git :host github :repo "Trevoke/org-gtd.el")
     :after org
     ;; :ensure t
-    :demand t
+    ;; :demand t
     :init
     (setq org-gtd-update-ack "3.0.0")
     (setq org-gtd-areas-of-focus '("Work Leadership" "Work Architecture" "Work Support"
@@ -1202,8 +1221,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
       (add-to-list 'consult-buffer-sources 'beframe-consult-source))
 
     (define-key global-map (kbd "C-c b") #'beframe-prefix-map)
-    (global-set-key (kbd "C-b") 'consult-buffer)
-    (define-key evil-normal-state-map (kbd "C-b") 'consult-buffer)
+    ;; (global-set-key (kbd "C-b") 'consult-buffer)
+    ;; (define-key evil-normal-state-map (kbd "C-b") 'consult-buffer)
     ;; TODO: ↑ does not work in org agenda
     )
 
@@ -1324,8 +1343,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :diminish (yas-minor-mode)
     :custom
     (yas-snippet-dirs (list (expand-file-name "snippets" minimal-emacs-user-directory)))
-    :config
-    (yas-global-mode t)
+    :hook (prog-mode . yas-minor-mode)
+    ;; :config
+    ;; (yas-global-mode t)
     )
 
   ;; Install the official Erlang mode
@@ -1341,15 +1361,15 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (add-to-list
      'load-path (car (file-expand-wildcards
                       "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
-  (when (not 'my-phone-p)
+  (when (not my-phone-p)
     (use-package erlang
       :ensure nil
-      :demand t
+      ;; :demand t
       :hook ((erlang-mode . display-line-numbers-mode)
              (erlang-mode . column-number-mode))
       :init
       )
-    (require 'erlang-start)
+    ;; (require 'erlang-start)
     (use-package indy
       :disabled
       :custom
@@ -1397,6 +1417,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq kubernetes-poll-frequency 3600
           kubernetes-redraw-frequency 3600))
   (use-package kubernetes-evil
+    :disabled
     :ensure t
     :after kubernetes)
 #+end_src
@@ -1415,9 +1436,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (use-package mu4e
     :ensure nil
     ;; :if my-linux-p
-    :hook (evil-collection-setup . (lambda (&rest a)
-                                     (evil-define-key 'normal mu4e-headers-mode-map "z%" 'mu4e-headers-mark-thread)
-                                     ))
+    ;; :hook (evil-collection-setup . (lambda (&rest a)
+    ;;                                  (evil-define-key 'normal mu4e-headers-mode-map "z%" 'mu4e-headers-mark-thread)
+    ;;                                  ))
     ;; :bind (:map mu4e-view-mode-map
     ;;             ("K" .
     ;;              (lambda ()
@@ -1654,7 +1675,6 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 ** Feeds
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package elfeed
-    :ensure
     :custom
     (elfeed-use-curl t)
     (elfeed-log-level 'debug)
@@ -1796,7 +1816,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq jira-api-version 2)
     (setq jira-issues-table-fields
           '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
-    (setq jira-debug t)
+    (setq jira-debug nil)
     (defun jira-api--token (host)
       (auth-source-pick-first-password
        :host "work.greyorange.com-jira" :user "credential"))
