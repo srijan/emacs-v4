@@ -144,6 +144,39 @@ This will generate a header at the top of the tangled file to indicate it is gen
   (when my-phone-p (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
   (server-start)
 #+end_src
+** Compile Angel
+Speed up Emacs by Automatically Byte-compiling and Native-compiling all .el files
+
+TODO: Need to evaluate how much speedup this gives
+
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package compile-angel
+    :ensure t
+    :demand t
+    :custom
+    ;; Set `compile-angel-verbose` to nil to suppress output from compile-angel.
+    ;; Drawback: The minibuffer will not display compile-angel's actions.
+    (compile-angel-verbose t)
+
+    :config
+    ;; The following directive prevents compile-angel from compiling your init
+    ;; files. If you choose to remove this push to `compile-angel-excluded-files'
+    ;; and compile your pre/post-init files, ensure you understand the
+    ;; implications and thoroughly test your code. For example, if you're using
+    ;; `use-package', you'll need to explicitly add `(require 'use-package)` at
+    ;; the top of your init file.
+    (push "/pre-init.el" compile-angel-excluded-files)
+    (push "/post-init.el" compile-angel-excluded-files)
+    (push "/pre-early-init.el" compile-angel-excluded-files)
+    (push "/post-early-init.el" compile-angel-excluded-files)
+    (push "/var/org-clock-save.el" compile-angel-excluded-files)
+
+    ;; A local mode that compiles .el files whenever the user saves them.
+    ;; (add-hook 'emacs-lisp-mode-hook #'compile-angel-on-save-local-mode)
+
+    ;; A global mode that compiles .el files before they are loaded.
+    (compile-angel-on-load-mode))
+#+end_src
 ** Personal Information
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -162,25 +195,6 @@ This will generate a header at the top of the tangled file to indicate it is gen
       (exec-path-from-shell-initialize))
     )
 #+end_src
-** COMMENT Compile Angel
-Speed up Emacs by Automatically Byte-compiling and Native-compiling all .el files
-
-TODO: Need to evaluate how much speedup this gives
-
-https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel---speed-up-emacs-by-automatically-byte-compiling-and-native-compiling-all-el-files
-
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package compile-angel
-    :ensure t
-    :demand t
-    :config
-    ;; Set `compile-angel-verbose` to nil to suppress output from compile-angel.
-    ;; Drawback: The minibuffer will not display compile-angel's actions.
-    (setq compile-angel-verbose nil)
-
-    (compile-angel-on-load-mode)
-    (add-hook 'emacs-lisp-mode-hook #'compile-angel-on-save-local-mode))
-#+end_src
 ** Misc config
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -192,7 +206,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   ;; Open the config file
   (global-set-key (kbd "C-x ,") (lambda() (interactive) (find-file (expand-file-name "config.org" minimal-emacs-user-directory))))
 
-  ;;; Custom file
+  ;; Custom file
   (setq custom-file null-device)
 
   ;; Auto-revert in Emacs is a feature that automatically updates the
@@ -203,7 +217,10 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   ;; recentf is an Emacs package that maintains a list of recently
   ;; accessed files, making it easier to reopen files you have worked on
   ;; recently.
-  (add-hook 'after-init-hook #'recentf-mode)
+  (add-hook 'after-init-hook #'(lambda()
+                                 (let ((inhibit-message t))
+                                   (recentf-mode 1))))
+  (add-hook 'kill-emacs-hook #'recentf-cleanup)
 
   ;; savehist is an Emacs feature that preserves the minibuffer history between
   ;; sessions. It saves the history of inputs in the minibuffer, such as commands,
@@ -215,6 +232,12 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   ;; upon reopening. This feature is particularly beneficial for resuming work at
   ;; the precise point where you previously left off.
   (add-hook 'after-init-hook #'save-place-mode)
+
+  ;; Enable `auto-save-mode' to prevent data loss. Use `recover-file' or
+  ;; `recover-session' to restore unsaved changes.
+  (setq auto-save-default t)
+  (setq auto-save-interval 300)
+  (setq auto-save-timeout 30)
 
   ;; Hide warnings and display only errors
   (setq warning-minimum-level :error)
@@ -436,6 +459,42 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
      tab-line-new-button-show nil
      tab-line-close-button-show nil))
 #+END_SRC
+** Completion in region and at point
+
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (use-package corfu
+    :ensure t
+    :defer t
+    :commands (corfu-mode global-corfu-mode)
+
+    :hook ((prog-mode . corfu-mode)
+           (shell-mode . corfu-mode)
+           (eshell-mode . corfu-mode))
+
+    :custom
+    ;; Hide commands in M-x which do not apply to the current mode.
+    (read-extended-command-predicate #'command-completion-default-include-p)
+    ;; Disable Ispell completion function. As an alternative try `cape-dict'.
+    (text-mode-ispell-word-completion nil)
+    (tab-always-indent 'complete)
+
+    ;; Enable Corfu
+    :config
+    (global-corfu-mode))
+
+  (use-package cape
+    :ensure t
+    :defer t
+    :commands (cape-dabbrev cape-file cape-elisp-block)
+    :bind ("C-c p" . cape-prefix-map)
+    :init
+    ;; Add to the global default value of `completion-at-point-functions' which is
+    ;; used by `completion-at-point'.
+    (add-hook 'completion-at-point-functions #'cape-dabbrev)
+    (add-hook 'completion-at-point-functions #'cape-file)
+    (add-hook 'completion-at-point-functions #'cape-elisp-block))
+#+end_src
 ** Completions
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -445,8 +504,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :ensure t
     :demand t
     :commands vertico-mode
-    :init (vertico-mode))
-  ;; :hook (after-init . vertico-mode))
+    :init (vertico-mode 1))
+    ;; :hook (elpaca-after-init . vertico-mode))
 
   (use-package orderless
     ;; Vertico leverages Orderless' flexible matching capabilities, allowing users
@@ -465,8 +524,8 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :ensure t
     :demand t
     :commands (marginalia-mode marginalia-cycle)
-    :init (marginalia-mode))
-  ;; :hook (after-init . marginalia-mode))
+    :init (marginalia-mode 1))
+    ;; :hook (after-init . marginalia-mode))
 
   (use-package embark
     ;; Embark is an Emacs package that acts like a context menu, allowing
@@ -581,6 +640,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
      :preview-key '(:debounce 0.4 any))
     (setq consult-narrow-key "<"))
 
+#+end_src
+** Code Folding
+#+begin_src emacs-lisp :tangle "post-init.el"
   (use-package outline-indent
     :ensure t
     :defer t
@@ -598,42 +660,29 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :custom
     (outline-indent-ellipsis " ▼ "))
 #+end_src
-** Completion in region and at point
-
+** Enhanced undo/redo
 #+begin_src emacs-lisp :tangle "post-init.el"
-
-  (use-package corfu
-    :ensure t
+  ;; The undo-fu package is a lightweight wrapper around Emacs' built-in undo
+  ;; system, providing more convenient undo/redo functionality.
+  (use-package undo-fu
     :defer t
-    :commands (corfu-mode global-corfu-mode)
-
-    :hook ((prog-mode . corfu-mode)
-           (shell-mode . corfu-mode)
-           (eshell-mode . corfu-mode))
-
-    :custom
-    ;; Hide commands in M-x which do not apply to the current mode.
-    (read-extended-command-predicate #'command-completion-default-include-p)
-    ;; Disable Ispell completion function. As an alternative try `cape-dict'.
-    (text-mode-ispell-word-completion nil)
-    (tab-always-indent 'complete)
-
-    ;; Enable Corfu
+    :commands (undo-fu-only-undo
+               undo-fu-only-redo
+               undo-fu-only-redo-all
+               undo-fu-disable-checkpoint)
     :config
-    (global-corfu-mode))
+    (global-unset-key (kbd "C-z"))
+    (global-set-key (kbd "C-z") 'undo-fu-only-undo)
+    (global-set-key (kbd "C-S-z") 'undo-fu-only-redo))
 
-  (use-package cape
-    :ensure t
+  ;; The undo-fu-session package complements undo-fu by enabling the saving
+  ;; and restoration of undo history across Emacs sessions, even after restarting.
+  (use-package undo-fu-session
     :defer t
-    :commands (cape-dabbrev cape-file cape-elisp-block)
-    :bind ("C-c p" . cape-prefix-map)
-    :init
-    ;; Add to the global default value of `completion-at-point-functions' which is
-    ;; used by `completion-at-point'.
-    (add-hook 'completion-at-point-functions #'cape-dabbrev)
-    (add-hook 'completion-at-point-functions #'cape-file)
-    (add-hook 'completion-at-point-functions #'cape-elisp-block))
+    :commands undo-fu-session-global-mode
+    :hook (after-init . undo-fu-session-global-mode))
 #+end_src
+
 ** COMMENT Evil
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -696,22 +745,6 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :config
     (require 'evil-org-agenda)
     (evil-org-agenda-set-keys))
-
-  (use-package undo-fu
-    :ensure t
-    :commands (undo-fu-only-undo
-               undo-fu-only-redo
-               undo-fu-only-redo-all
-               undo-fu-disable-checkpoint)
-    :custom
-    ;; 3 times the default values
-    (undo-limit (* 3 160000))
-    (undo-strong-limit (* 3 240000)))
-
-  (use-package undo-fu-session
-    :ensure t
-    :config
-    (undo-fu-session-global-mode))
 
   ;;  (use-package vim-tab-bar
   ;;    :ensure t
