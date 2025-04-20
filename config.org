@@ -1737,7 +1737,24 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
        fediverse URL structure patterns (like my own site)."
       (let ((browse-url-browser-function #'eww-browse-url))
         (mastodon-url-lookup url (derived-mode-p 'elfeed-search-mode 'elfeed-show-mode))))
-    (setq browse-url-browser-function #'sj-browse-url)
+    ;; (setq browse-url-browser-function #'sj-browse-url)
+    (setq browse-url-browser-function #'browse-url-default-browser)
+
+    (defun elfeed-protocol-fever-sync-unread-stat (host-url)
+      "Set all entries in search view to read and fetch latest unread entries.
+  HOST-URL is the host name of Fever server with user field authentication info,
+  for example \"https://user@myhost.com\"."
+      (interactive
+       (list (completing-read
+              "feed: "
+              (mapcar (lambda (fd)
+                        (string-trim-left (car fd) "[^+]*\\+"))
+                      elfeed-protocol-feeds))))
+      (save-mark-and-excursion
+        (mark-whole-buffer)
+        (cl-loop for entry in (elfeed-search-selected)
+                 do (elfeed-untag-1 entry 'unread))
+        (elfeed-protocol-fever--do-update host-url 'update-unread)))
 
     (defun sj-elfeed-hard-refresh()
       "Performs a hard-refresh of the elfeed database and fetching everything from scratch"
