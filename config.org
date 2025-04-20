@@ -1063,12 +1063,56 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
 #+END_SRC
 ** Notes
 #+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package howm
+    :ensure t
+    :defer t
+    :bind (("C-c ; ;" . howm-menu))
+    :init
+    (require 'howm-org)
+    (setopt howm-directory "~/ndxrd-uxxs3/notes")
+    (setopt howm-follow-theme t)
+    (setopt howm-file-name-format "%Y%m%dT%H%M%S.org")
+    (setopt howm-view-title-header "#+title:")
+
+    :config
+    (add-hook 'howm-mode-hook #'tab-line-mode)
+    ;; In case you don't always use Org-mode files, the following lines
+    ;; ensure that Denote's title format for plain-text and Markdown files
+    ;; will also be recognized.
+    (setopt howm-view-title-regexp
+            "^#?\\+?[tT][iI][tT][lL][eE]:\\( +\\(.*\\)\\|\\)$")
+    (setopt howm-view-title-regexp-grep "^(#?\\+?[tT][iI][tT][lL][eE]:) +")
+
+    ;; Advise `howm-view-item-basename' so that if its return value
+    ;; includes "--", only the text before is returned.
+    (defun my/howm-basename-chop (str)
+      "Advice for `howm-view-item-basename'.
+      Takes a file's basename, STR, and returns only the portion before
+      \"--\"."
+      (let ((dashes-pos (string-match "--" str)))
+        (cond (dashes-pos (substring str 0 dashes-pos))
+              (t str))))
+
+    (advice-add 'howm-view-item-basename :filter-return
+                'my/howm-basename-chop)
+
+    ;; Advise `howm-view-item-summary' so that it removes the "#+title: "
+    ;; portion of note titles.
+    ;; (defvar howm-view-title-regexp)
+    (defun my/howm-cut-title (str)
+      "Remove `howm-view-title-header' plus whitespace from STR."
+      (let ((begin (when (string-match howm-view-title-regexp str)
+                     (match-beginning 2))))
+        (if begin (substring str begin) str)))
+
+    (advice-add 'howm-view-item-summary :filter-return 'my/howm-cut-title)
+    )
   (use-package denote
     ;; :demand
     :custom
     (denote-directory (expand-file-name "~/ndxrd-uxxs3/notes/"))
     (denote-known-keywords '("emacs" "philosophy" "politics" "economics"))
-    (denote-file-type 'markdown-yaml)
+    (denote-file-type 'org) ;; or 'markdown-yaml
     (denote-infer-keywords t)
     (denote-sort-keywords t)
     (denote-date-prompt-use-org-read-date t)
