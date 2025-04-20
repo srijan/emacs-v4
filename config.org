@@ -304,53 +304,46 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (use-package fontaine
     :custom
     (fontaine-presets
-     '(
+     `(
        (aporetic-regular
         :default-family "Aporetic Sans Mono"
-        :default-height 130
         :variable-pitch-family "Aporetic Sans"
         )
        (iawriter-regular
         :default-family "iMWritingMono Nerd Font"
-        :default-height 130
         :line-spacing 0.1
-        :variable-pitch-family "iMWritingDuo Nerd Font Propo"
-        ;; :variable-pitch-family "Merriweather Sans Light"
-        ;; :variable-pitch-height 0.96
+        :variable-pitch-family "iMWritingMono Nerd Font"
         )
        (berkeley-regular
         :default-family "Berkeley Mono"
-        :default-height 150
         :line-spacing 0.1
         :variable-pitch-family "Berkeley Mono Variable"
-        ;; :variable-pitch-family "Merriweather Sans Light"
-        ;; :variable-pitch-height 0.96
         )
        (berkeley-large
         :inherit berkeley-regular
-        :default-height 200
+        :default-height 170
         )
        (t
-        :default-family "Iosevka Comfy"
+        :default-family "Aporetic Sans Mono"
         :default-weight regular
-        :default-height 160
-        :fixed-pitch-family nil ; falls back to :default-family
-        :fixed-pitch-weight nil ; falls back to :default-weight
+        :default-height 110
+        :fixed-pitch-family nil
+        :fixed-pitch-weight nil
         :fixed-pitch-height 1.0
-        :fixed-pitch-serif-family nil ; falls back to :default-family
-        :fixed-pitch-serif-weight nil ; falls back to :default-weight
+        :fixed-pitch-serif-family nil
+        :fixed-pitch-serif-weight nil
         :fixed-pitch-serif-height 1.0
-        :variable-pitch-family "Iosevka Comfy Duo"
+        :variable-pitch-family "Aporetic Sans Mono"
         :variable-pitch-weight nil
         :variable-pitch-height 1.0
-        :bold-family nil ; use whatever the underlying face has
+        :bold-family nil
         :bold-weight bold
         :italic-family nil
         :italic-slant italic
         :line-spacing nil)))
     :config
     (when (display-graphic-p)
-      (fontaine-set-preset 'iosevka-regular))
+      (fontaine-set-preset 'iawriter-regular))
     )
 
   (use-package emoji
