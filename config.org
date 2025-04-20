@@ -118,6 +118,9 @@ This file has the config that has to be loaded before the rest of the minimal-em
   (elpaca elpaca-use-package
     (elpaca-use-package-mode))
 
+  (setopt use-package-compute-statistics t)
+  (setopt use-package-always-defer t)
+
   ;; Lock file
   ;; (setq elpaca-lock-file (expand-file-name "elpaca-lock.eld" minimal-emacs-user-directory))
 #+end_src
@@ -149,17 +152,17 @@ This will generate a header at the top of the tangled file to indicate it is gen
 #+END_SRC
 ** Mac Specific
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (when (eq system-type 'darwin)
-    (setq insert-directory-program "/opt/homebrew/bin/gls"))
+  (when my-mac-p
+    (setq insert-directory-program "/opt/homebrew/bin/gls")
 
-  (use-package exec-path-from-shell
-    :if (memq (window-system) '(mac ns))
-    :ensure t
-    :demand t
-    :config
-    (exec-path-from-shell-initialize))
+    (use-package exec-path-from-shell
+      :ensure t
+      :demand t
+      :config
+      (exec-path-from-shell-initialize))
+    )
 #+end_src
-** Compile Angel
+** COMMENT Compile Angel
 Speed up Emacs by Automatically Byte-compiling and Native-compiling all .el files
 
 TODO: Need to evaluate how much speedup this gives
@@ -417,7 +420,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
   (add-hook 'after-init-hook #'window-divider-mode)
 
 #+END_SRC
-** Tabs
+** COMMENT Tabs
 #+BEGIN_SRC emacs-lisp :tangle "post-init.el"
   (use-package tab-line
     :ensure nil
@@ -431,7 +434,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (setq
      tab-line-new-button-show nil
      tab-line-close-button-show nil))
-  #+END_SRC
+#+END_SRC
 ** Completions
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -502,7 +505,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
            ("C-c M-x" . consult-mode-command)
            ("C-c h" . consult-history)
            ("C-c k" . consult-kmacro)
-           ("C-c m" . consult-man)
+           ("C-c M" . consult-man)
            ("C-c i" . consult-info)
            ([remap Info-search] . consult-info)
            ;; C-x bindings in `ctl-x-map'
@@ -1086,10 +1089,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
          (t
           (denote week '("weeklyreview") nil nil nil 'weekly-review)))))
     :hook (dired-mode . denote-dired-mode)
-    ;; :bind (map :global-map
-    ;;            ("C-c n d" . (dired-jump denote-directory)))
     :bind
     ("C-c n n" . denote)
+    ("C-c n d" . (lambda () (interactive) (dired denote-directory)))
     ("C-c n r" . my-weekly-review-journal)
     )
   (use-package denote-journal
@@ -1161,6 +1163,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
           ("C-x t M-t" . treemacs-find-tag))
     )
   (use-package treemacs-evil
+    :disabled
     :after (treemacs evil)
     :ensure t)
 
@@ -1276,6 +1279,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     )
 
   (use-package auth-source-1password
+    :demand t
     :config
     (auth-source-1password-enable))
 
@@ -1428,8 +1432,9 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     ;;              (gnus-article-jump-to-part 1)
     ;;              (gnus-article-press-button)
     ;;           (gnus-article-press-button))))
+    :bind (("C-c m" . mu4e))
+    :autoload mu4e-update-index
     :config
-    (global-set-key (kbd "C-c m") 'mu4e)
     (setq
      ;; mu4e-use-maildirs-extension nil
      mu4e-view-prefer-html nil
@@ -1595,13 +1600,14 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     (require 'mu4e-icalendar)
     (mu4e-icalendar-setup)
     (setq mu4e-icalendar-trash-after-reply t)
-    (mu4e t) ;; Start mu4e in the background
+    ;; (mu4e t) ;; Start mu4e in the background
     )
   (use-package mu4e-views
     :disabled
     )
   (use-package org
     :ensure nil
+    :after mu4e
     :bind (
            :map mu4e-headers-mode-map
            ("C-c i" . org-capture-mail)
@@ -1760,12 +1766,7 @@ https://github.com/jamescherti/minimal-emacs.d/?tab=readme-ov-file#compile-angel
     :config
     (elfeed-protocol-enable)
     )
-  (use-package elfeed-webkit
-    :ensure
-    :hook (evil-collection-setup . (lambda (&rest a)
-                                     (evil-define-key 'normal elfeed-show-mode-map "z%" 'elfeed-webkit-toggle)
-                                     ))
-    )
+  (use-package elfeed-webkit :disabled)
 
   ;; (elfeed-protocol-fever-get-update-mark "fever+https://srijan@miniflux.p.nwdr.io" 'update)
 
