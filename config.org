@@ -169,7 +169,7 @@ TODO: Need to evaluate how much speedup this gives
     (push "/post-init.el" compile-angel-excluded-files)
     (push "/pre-early-init.el" compile-angel-excluded-files)
     (push "/post-early-init.el" compile-angel-excluded-files)
-    (push "/var/org-clock-save.el" compile-angel-excluded-files)
+    (push "/org-clock-save.el" compile-angel-excluded-files)
 
     ;; A local mode that compiles .el files whenever the user saves them.
     ;; (add-hook 'emacs-lisp-mode-hook #'compile-angel-on-save-local-mode)
@@ -803,7 +803,6 @@ TODO: Need to evaluate how much speedup this gives
   (use-package all-the-icons)
   ;;(use-package nerd-icons)
   (use-package doom-modeline
-    :disabled
     :ensure t
     :init
     (doom-modeline-mode 1))
@@ -858,14 +857,14 @@ TODO: Need to evaluate how much speedup this gives
 #+end_src
 ** Term Mode Stuff
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (defun bb/setup-term-mode ()
-    (evil-local-set-key 'insert (kbd "C-r") 'bb/send-C-r))
+  ;; (defun bb/setup-term-mode ()
+  ;;   (evil-local-set-key 'insert (kbd "C-r") 'bb/send-C-r))
 
   (defun bb/send-C-r ()
     (interactive)
     (term-send-raw-string "\C-r"))
 
-  (add-hook 'term-mode-hook 'bb/setup-term-mode)
+  ;; (add-hook 'term-mode-hook 'bb/setup-term-mode)
 
   (when my-linux-p
     (use-package multi-term))
@@ -1489,7 +1488,7 @@ TODO: Need to evaluate how much speedup this gives
   (use-package yaml-mode)
   (use-package kubernetes
     :ensure t
-    :commands (kubernetes-overview)
+    :commands (kubernetes-overview kubernetes-events)
     :config
     (setq kubernetes-poll-frequency 3600
           kubernetes-redraw-frequency 3600))
@@ -1870,8 +1869,7 @@ TODO: Need to evaluate how much speedup this gives
     ;; (elfeed-protocol-newsblur-maxpages 1)
     ;; (elfeed-protocol-owncloud-maxsize 10)
     ;; (elfeed-protocol-ttrss-maxsize 10)
-    :config
-    (elfeed-protocol-enable)
+    :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
   (use-package elfeed-webkit :disabled)
 
