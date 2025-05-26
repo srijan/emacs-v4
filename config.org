@@ -585,6 +585,7 @@ TODO: Need to evaluate how much speedup this gives
            ("C-M-#" . consult-register)
            ;; Other custom bindings
            ("M-y" . consult-yank-pop)
+           ("C-c C-x C-<tab>" . my/consult-clock-in)
            ;; M-g bindings in `goto-map'
            ("M-g e" . consult-compile-error)
            ("M-g f" . consult-flymake)
@@ -631,6 +632,15 @@ TODO: Need to evaluate how much speedup this gives
     ;; Use Consult to select xref locations with preview
     (setq xref-show-xrefs-function #'consult-xref
           xref-show-definitions-function #'consult-xref)
+
+    (defun my/consult-clock-in ()
+      "Use consult-org-agenda to select and clock into a task without changing current buffer."
+      (interactive)
+      (let ((original-buffer (current-buffer)))
+        (when-let (marker (consult-org-agenda))
+          (org-with-point-at marker
+            (org-clock-in)))
+        (switch-to-buffer original-buffer)))
 
     :config
     (consult-customize
