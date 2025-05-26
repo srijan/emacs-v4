@@ -678,15 +678,14 @@ TODO: Need to evaluate how much speedup this gives
   ;; The undo-fu package is a lightweight wrapper around Emacs' built-in undo
   ;; system, providing more convenient undo/redo functionality.
   (use-package undo-fu
-    :defer t
     :commands (undo-fu-only-undo
                undo-fu-only-redo
                undo-fu-only-redo-all
                undo-fu-disable-checkpoint)
-    :config
-    (global-unset-key (kbd "C-z"))
-    (global-set-key (kbd "C-z") 'undo-fu-only-undo)
-    (global-set-key (kbd "C-S-z") 'undo-fu-only-redo))
+    :bind (("C-z" . nil)
+           ("C-z" . undo-fu-only-undo)
+           ("C-S-z" . undo-fu-only-redo))
+    )
 
   ;; The undo-fu-session package complements undo-fu by enabling the saving
   ;; and restoration of undo history across Emacs sessions, even after restarting.
@@ -1014,6 +1013,7 @@ TODO: Need to evaluate how much speedup this gives
     )
   (use-package org-protocol
     :ensure nil
+    :demand t
     :custom
     (org-protocol-default-template-key "l")
     )
