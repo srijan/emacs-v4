@@ -404,9 +404,9 @@ TODO: Need to evaluate how much speedup this gives
     (defun my-ef-themes-mode-line ()
       "Tweak the style of the mode lines."
       (ef-themes-with-colors
-        (custom-set-faces
-         `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
-         `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+       (custom-set-faces
+        `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+        `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
     :init
     (ef-themes-select 'ef-maris-light)
     )
@@ -508,7 +508,7 @@ TODO: Need to evaluate how much speedup this gives
     :demand t
     :commands vertico-mode
     :init (vertico-mode 1))
-    ;; :hook (elpaca-after-init . vertico-mode))
+  ;; :hook (elpaca-after-init . vertico-mode))
 
   (use-package orderless
     ;; Vertico leverages Orderless' flexible matching capabilities, allowing users
@@ -528,7 +528,7 @@ TODO: Need to evaluate how much speedup this gives
     :demand t
     :commands (marginalia-mode marginalia-cycle)
     :init (marginalia-mode 1))
-    ;; :hook (after-init . marginalia-mode))
+  ;; :hook (after-init . marginalia-mode))
 
   (use-package embark
     ;; Embark is an Emacs package that acts like a context menu, allowing
@@ -685,7 +685,6 @@ TODO: Need to evaluate how much speedup this gives
     :commands undo-fu-session-global-mode
     :hook (after-init . undo-fu-session-global-mode))
 #+end_src
-
 ** COMMENT Evil
 
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -1392,7 +1391,7 @@ TODO: Need to evaluate how much speedup this gives
     :hook (prog-mode . (lambda ()
                          (interactive)
                          (unless (file-remote-p default-directory)
-          		 (copilot-mode))))
+            		         (copilot-mode))))
     :custom
     (copilot-max-char 1000000)
     :bind (
