@@ -312,6 +312,9 @@ TODO: Need to evaluate how much speedup this gives
 #+end_src
 ** Looks & Themes
 #+begin_src emacs-lisp :tangle "post-init.el"
+  (when my-mac-p
+    (set-face-attribute 'default nil :height 140))
+
   (add-to-list 'default-frame-alist '(height . 55))
   (add-to-list 'default-frame-alist '(width . 160))
 
@@ -937,6 +940,47 @@ TODO: Need to evaluate how much speedup this gives
     (run-with-timer 1 60 'current-clock-time-to-file)
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    (when my-mac-p
+      (defun my/focus-clock-in ()
+        (let* ((task-name (org-get-heading t t t t))
+               (file-name (file-name-sans-extension (buffer-name)))
+               (profile (downcase file-name))
+               (url (format "focus://focus?profile=%s" profile))
+               (cmd (format "open -g '%s'" url)))
+          (shell-command cmd)))
+
+      (defun my/focus-clock-out ()
+        (let* ((file-name (file-name-sans-extension (buffer-name)))
+               (profile (downcase file-name))
+               (url (format "focus://unfocus?profile=%s" profile))
+               (cmd (format "open -g '%s'" url)))
+          (shell-command cmd)))
+
+      (add-hook 'org-clock-in-hook #'my/focus-clock-in)
+      (add-hook 'org-clock-out-hook #'my/focus-clock-out)
+
+      (defun my/session-clock-in ()
+        (let* ((task-name (org-get-heading t t t t))
+               (file-name (file-name-sans-extension (buffer-name)))
+               (effort-minutes (org-duration-to-minutes (or (org-entry-get nil "Effort") "0")))
+               (elapsed-minutes (/ (or (org-clock-sum) 0) 60))
+               (remaining-seconds (- (* effort-minutes 60) (* elapsed-minutes 60)))
+               (url (format "session:///start?intent=%s&categoryName=%s%s"
+                            (url-encode-url task-name)
+                            (url-encode-url file-name)
+                            (if (> remaining-seconds 120)
+                                (format "&duration=%d" remaining-seconds)
+                              "")))
+               (cmd (format "open -g '%s'" url)))
+          (shell-command cmd)))
+
+      (defun my/session-clock-out ()
+        (shell-command "open -g 'session:///finish'"))
+
+      (add-hook 'org-clock-in-hook #'my/session-clock-in)
+      (add-hook 'org-clock-out-hook #'my/session-clock-out)
+      )
 
     ;; Custom functions
     (defun org-capture-inbox ()
