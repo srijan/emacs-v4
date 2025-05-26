@@ -1393,6 +1393,20 @@ TODO: Need to evaluate how much speedup this gives
                             (auth-source-pick-first-password :host "api.anthropic.com" :user "credential"))
                      ))
     )
+  (use-package gptel-tool-library
+    :ensure (:host github :repo "aard-fi/gptel-tool-library")
+    :after gptel
+    :init
+    (require 'gptel-tool-library)
+    :config
+    ;; set this if you want to use maybe safe functions (recommended)
+    ;;(setq gptel-tool-library-use-maybe-safe t)
+    ;; set this if you also want to use unsafe functions
+    ;;(setq gptel-tool-library-use-unsafe t)
+    (dolist (module '("buffer" "elisp" "emacs" "os"))
+      (gptel-tool-library-load-module module))
+    )
+
 
   (use-package copilot
     :diminish
