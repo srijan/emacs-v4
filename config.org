@@ -319,6 +319,7 @@ TODO: Need to evaluate how much speedup this gives
   (add-to-list 'default-frame-alist '(width . 160))
 
   ;; (setq-default cursor-type 'bar)
+  (setopt scroll-bar-mode 'right)
   (scroll-bar-mode 1)
 
   ;; Fast and smooth scrolling
@@ -817,6 +818,7 @@ TODO: Need to evaluate how much speedup this gives
     :ensure t
     :init
     (doom-modeline-mode 1))
+  (use-package hide-mode-line :demand t)
 #+end_src
 ** Dirvish
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -1274,6 +1276,10 @@ TODO: Need to evaluate how much speedup this gives
 #+END_SRC
 ** File tree
 #+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package speedbar
+    :ensure nil
+    :custom
+    (speedbar-prefer-window t))
   (use-package treemacs
     :init
     (with-eval-after-load 'winum
@@ -1316,7 +1322,7 @@ TODO: Need to evaluate how much speedup this gives
     :after (treemacs magit)
     :ensure t)
   #+end_src
-** Workspaces - beframe
+** COMMENT Workspaces - beframe
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package beframe
     :demand
@@ -1510,9 +1516,14 @@ TODO: Need to evaluate how much speedup this gives
       ;; :demand t
       :hook ((erlang-mode . display-line-numbers-mode)
              (erlang-mode . column-number-mode))
+      :custom
+      (erlang-electric-commands '(erlang-electric-comma
+                                  erlang-electric-semicolon
+                                  erlang-electric-gt
+                                  erlang-electric-newline))
       :init
+      (require 'erlang-start)
       )
-    ;; (require 'erlang-start)
     (use-package indy
       :disabled
       :custom
@@ -1960,14 +1971,14 @@ TODO: Need to evaluate how much speedup this gives
   (use-package jira
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
     :config
-    (with-eval-after-load "evil"
-      (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
-      (evil-define-key 'normal jira-issues-mode-map "gi"
-        (lambda () (interactive)
-          (jira-detail-show-issue (jira-utils-marked-item))))
-      (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
-      (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
-      )
+    ;; (with-eval-after-load "evil"
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gi"
+    ;;     (lambda () (interactive)
+    ;;       (jira-detail-show-issue (jira-utils-marked-item))))
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
+    ;;   (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
+    ;;   )
     
     (setq jira-base-url "https://work.greyorange.com/jira")
     (setq jira-username "srijan.c@greyorange.com")
@@ -1985,6 +1996,7 @@ TODO: Need to evaluate how much speedup this gives
 ** Slack
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package slack
+    :ensure (:host github :repo "emacs-slack/emacs-slack")
     :bind (("C-c s K" . slack-stop)
            ("C-c s c" . slack-select-rooms)
            ("C-c s u" . slack-select-unread-rooms)
@@ -2016,6 +2028,7 @@ TODO: Need to evaluate how much speedup this gives
     (setq slack-prefer-current-team t)
     (setq slack-enable-global-mode-string t)
     (setq slack-buffer-function 'switch-to-buffer)
+    (setq slack-thread-also-send-to-room nil)
     (slack-register-team
      :name "greyorange"
      :default t
@@ -2027,6 +2040,7 @@ TODO: Need to evaluate how much speedup this gives
               :host "work-slack-tokens"
               :user "cookie"))
     )
+  ;; (elpaca--configure-remotes (elpaca-get 'slack))
   (use-package alert
     :commands (alert)
     :init
@@ -2036,8 +2050,8 @@ TODO: Need to evaluate how much speedup this gives
 #+end_src
 ** Mastodon
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package emojify)
-  ;; (:hook (after-init . global-emojify-mode))
+  (use-package emojify
+    :hook (after-init . global-emojify-mode))
   (use-package mastodon
     ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
     :ensure t
@@ -2092,4 +2106,16 @@ TODO: Need to evaluate how much speedup this gives
           (kill-new gpg-signature)
           (message "GPG signature copied to clipboard.")))
 
+#+end_src
+** Homeassistant
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package hass
+    :ensure t
+    :custom
+    ;; -- Configuration goes here --
+    (hass-host "192.168.7.10")
+    (hass-port 8123)
+    (hass-insecure t)
+    (hass-apikey (lambda () (auth-source-pick-first-password :host "HomeAssistant" :user "emacs-apikey")))
+    )
 #+end_src
