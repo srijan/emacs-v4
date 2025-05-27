@@ -1092,6 +1092,60 @@ TODO: Need to evaluate how much speedup this gives
      ))
 
 #+END_SRC
+** Calendar
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (setq safe-local-variable-values
+        (quote
+         ((buffer-read-only . 1))))
+  (use-package khalel
+    :after org
+    :demand t
+    :config
+    (setq khalel-import-org-file (expand-file-name "calendar.org" org-gtd-directory))
+    (setq khalel-import-org-file-confirm-overwrite nil)
+    (setq khalel-import-format "* {title} {cancelled} :{calendar}:
+  :PROPERTIES:
+  :CALENDAR: {calendar}
+  :LOCATION: {location}
+  :ID: {uid}
+  :END:
+  - When: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>
+  - Where: {location}
+  - Description: {description}
+  - URL: {url}
+  - Organizer: {organizer}
+  "))
+  (defun my/copy-calendar-task-to-inbox (orig-fun &rest args)
+    "Copy task from calendar.org to inbox.org before clocking in"
+    (let* ((marker (org-get-at-bol 'org-marker))
+           (file-name (if marker
+                          (buffer-file-name (marker-buffer marker))
+                        (buffer-file-name)))
+           (calendar-file (expand-file-name "calendar.org" org-gtd-directory))
+           (inbox-file (expand-file-name "inbox.org" org-gtd-directory)))
+      (if (and file-name
+               (string= file-name calendar-file))
+          (save-excursion
+            (when marker
+              (org-goto-marker-or-bmk marker))
+            (let* ((task-title (org-get-heading t t t t))
+                   (task-body (org-get-entry))
+                   (inbox-buffer (find-file-noselect inbox-file)))
+              (with-current-buffer inbox-buffer
+                (let ((original-point (point-max)))
+                  (goto-char original-point)
+                  (insert "\n* " task-title "\n" task-body)
+                  (save-buffer)
+                  (goto-char original-point)
+                  (forward-line 1)
+                  (apply orig-fun args)))))
+        ;; If not in calendar.org, just run the original function
+        (apply orig-fun args))))
+
+  (advice-add 'org-clock-in :around #'my/copy-calendar-task-to-inbox)
+
+
+#+end_src
 ** Popup frames
 #+begin_src emacs-lisp :tangle "post-init.el"
   ;;;; Run commands in a popup frame
