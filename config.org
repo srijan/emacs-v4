@@ -955,7 +955,9 @@ TODO: Need to evaluate how much speedup this gives
       (defun my/focus-clock-in ()
         (let* ((task-name (org-get-heading t t t t))
                (file-name (file-name-sans-extension (buffer-name)))
-               (profile (downcase file-name))
+               (profile (if (string= task-name "Break")
+                            "break"
+                          (downcase file-name)))
                (url (format "focus://focus?profile=%s" profile))
                (cmd (format "open -g '%s'" url)))
           (shell-command cmd)))
@@ -988,8 +990,8 @@ TODO: Need to evaluate how much speedup this gives
       (defun my/session-clock-out ()
         (shell-command "open -g 'session:///finish'"))
 
-      (add-hook 'org-clock-in-hook #'my/session-clock-in)
-      (add-hook 'org-clock-out-hook #'my/session-clock-out)
+      ;; (add-hook 'org-clock-in-hook #'my/session-clock-in)
+      ;; (add-hook 'org-clock-out-hook #'my/session-clock-out)
       )
 
     ;; Custom functions
@@ -1323,7 +1325,7 @@ TODO: Need to evaluate how much speedup this gives
     (defun my/command-line-diff (switch)
       (setq initial-buffer-choice nil)
       (let ((file1 (pop command-line-args-left))
-        (file2 (pop command-line-args-left)))
+            (file2 (pop command-line-args-left)))
         (ediff file1 file2)))
     ;; show the ediff command buffer in the same frame
     (add-to-list 'command-switch-alist '("-diff" . my/command-line-diff)))
@@ -1375,7 +1377,7 @@ TODO: Need to evaluate how much speedup this gives
   (use-package treemacs-magit
     :after (treemacs magit)
     :ensure t)
-  #+end_src
+#+end_src
 ** COMMENT Workspaces - beframe
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package beframe
@@ -2019,7 +2021,7 @@ TODO: Need to evaluate how much speedup this gives
   ;; (cl-loop for entry in (elfeed-search-selected)
   ;;          do (elfeed-untag-1 entry 'unread))
 
-  #+END_SRC
+#+END_SRC
 ** JIRA
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jira
@@ -2113,7 +2115,7 @@ TODO: Need to evaluate how much speedup this gives
     (setq mastodon-instance-url "https://indieweb.social"
           mastodon-active-user "srijan")
     )
- #+end_src
+#+end_src
 ** Reddit
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package md4rd
@@ -2155,10 +2157,10 @@ TODO: Need to evaluate how much speedup this gives
 
   (defun gpg-sign (&optional text)
     "Sign the given TEXT with GPG, and copy the results to the clipboard."
-        (interactive "sText to sign: ")
-        (let ((gpg-signature (shell-command-to-string (format "echo '%s' | gpg --clearsign --armor" text))))
-          (kill-new gpg-signature)
-          (message "GPG signature copied to clipboard.")))
+    (interactive "sText to sign: ")
+    (let ((gpg-signature (shell-command-to-string (format "echo '%s' | gpg --clearsign --armor" text))))
+      (kill-new gpg-signature)
+      (message "GPG signature copied to clipboard.")))
 
 #+end_src
 ** Homeassistant
