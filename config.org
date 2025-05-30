@@ -317,7 +317,11 @@ TODO: Need to evaluate how much speedup this gives
 ** Looks & Themes
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when (not my-phone-p)
-    (load-theme 'modus-vivendi-tinted t))
+    (add-to-list 'default-frame-alist '(height . 55))
+    (add-to-list 'default-frame-alist '(width . 160))
+    (load-theme 'modus-vivendi-tinted t)
+    (setopt scroll-bar-mode 'right)
+    (scroll-bar-mode 1))
   (when my-mac-p
     (set-frame-font "Aporetic Sans Mono-16" nil t)
     (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-16")))
@@ -334,14 +338,6 @@ TODO: Need to evaluate how much speedup this gives
     (setopt tool-bar-button-margin 20)
     )
 
-  (add-to-list 'default-frame-alist '(height . 55))
-  (add-to-list 'default-frame-alist '(width . 160))
-
-  ;; (setq-default cursor-type 'bar)
-  (when (not my-phone-p)
-    (setopt scroll-bar-mode 'right)
-    (scroll-bar-mode 1))
-
   ;; Fast and smooth scrolling
   (use-package ultra-scroll
     :disabled
@@ -351,52 +347,6 @@ TODO: Need to evaluate how much speedup this gives
           scroll-margin 0)
     :config
     (ultra-scroll-mode 1))
-
-  (use-package fontaine
-    :disabled
-    :custom
-    (fontaine-presets
-     `(
-       (aporetic-regular
-        :default-family "Aporetic Sans Mono"
-        :variable-pitch-family "Aporetic Sans"
-        )
-       (iawriter-regular
-        :default-family "iMWritingMono Nerd Font"
-        :line-spacing 0.1
-        :variable-pitch-family "iMWritingMono Nerd Font"
-        )
-       (berkeley-regular
-        :default-family "Berkeley Mono"
-        :line-spacing 0.1
-        :variable-pitch-family "Berkeley Mono Variable"
-        )
-       (berkeley-large
-        :inherit berkeley-regular
-        :default-height 170
-        )
-       (t
-        :default-family "Aporetic Sans Mono"
-        :default-weight regular
-        :default-height 110
-        :fixed-pitch-family nil
-        :fixed-pitch-weight nil
-        :fixed-pitch-height 1.0
-        :fixed-pitch-serif-family nil
-        :fixed-pitch-serif-weight nil
-        :fixed-pitch-serif-height 1.0
-        :variable-pitch-family "Aporetic Sans Mono"
-        :variable-pitch-weight nil
-        :variable-pitch-height 1.0
-        :bold-family nil
-        :bold-weight bold
-        :italic-family nil
-        :italic-slant italic
-        :line-spacing nil)))
-    :config
-    (when (display-graphic-p)
-      (fontaine-set-preset 'iawriter-regular))
-    )
 
   (use-package emoji
     :ensure nil
