@@ -1138,6 +1138,68 @@ TODO: Need to evaluate how much speedup this gives
     (advice-add 'org-clock-in :around #'my/copy-calendar-task-to-inbox)
 
 #+end_src
+** Org in Android
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when my-phone-p
+    ;; Clock in with task selection
+    (defun toolbar-org-clock-in-smart ()
+      "Smart clock in - use current heading or select task."
+      (interactive)
+      (cond
+       ;; If already clocked in, ask to switch
+       (org-clock-current-task
+        (when (y-or-n-p (format "Already clocked in to '%s'. Switch tasks? " 
+                                org-clock-current-task))
+          (org-clock-out)
+          (if (and (eq major-mode 'org-mode) (org-at-heading-p))
+              (org-clock-in)
+            (org-clock-in '(4))))) ; With prefix arg to select task
+       ;; If on org heading, clock in directly
+       ((and (eq major-mode 'org-mode) (org-at-heading-p))
+        (org-clock-in))
+       ;; Otherwise, let user select task
+       (t
+        (org-clock-in '(4)))))
+
+    ;; Clock out with summary
+    (defun toolbar-org-clock-out-with-summary ()
+      "Clock out and show summary."
+      (interactive)
+      (when org-clock-current-task
+        (let ((task org-clock-current-task)
+              (duration (org-duration-from-minutes
+                         (floor (org-time-convert-to-integer
+                                 (time-since org-clock-start-time)) 60))))
+          (org-clock-out)
+          (message "Clocked out of '%s' - Duration: %s" task duration))))
+
+    ;; Jump to currently clocked task
+    (defun toolbar-org-clock-goto ()
+      "Jump to currently clocked task."
+      (interactive)
+      (if org-clock-current-task
+          (org-clock-goto)
+        (message "No active clock")))
+
+    (setq tool-bar-map (make-sparse-keymap))
+    (tool-bar-add-item "mail/inbox" 'org-open-inbox 'org-inbox-button
+                       :help "Open Inbox")
+    (tool-bar-add-item nil nil 'separator-1 :separator t)
+    (tool-bar-add-item "index" 'org-gtd-engage 'gtd-engage-button
+                       :help "GTD Engage")
+    (tool-bar-add-item "gnus/toggle-subscription" 'org-resolve-clocks 'resolve-clocks-button
+                       :help "Resolve Clocks")
+    (tool-bar-add-item nil nil 'separator-2 :separator t)
+    (tool-bar-add-item "mpc/play" 'toolbar-org-clock-in-smart 'smart-clock-in
+                       :help "Clock in to task (smart selection)")
+    (tool-bar-add-item "mpc/stop" 'toolbar-org-clock-out-with-summary 'clock-out-summary
+                       :help "Clock out with time summary")
+    (tool-bar-add-item "jump-to" 'toolbar-org-clock-goto 'goto-clock
+                       :help "Jump to currently clocked task")
+    (tool-bar-add-item "save" 'org-save-all-org-buffers 'save-all-org
+                       :help "Save all modified org buffers")
+    )
+#+end_src
 ** COMMENT Org Caldav
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org-caldav
