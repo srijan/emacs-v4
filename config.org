@@ -319,15 +319,23 @@ TODO: Need to evaluate how much speedup this gives
   (when (not my-phone-p)
     (add-to-list 'default-frame-alist '(height . 55))
     (add-to-list 'default-frame-alist '(width . 160))
-    (load-theme 'modus-vivendi-tinted t)
     (setopt scroll-bar-mode 'right)
     (scroll-bar-mode 1))
   (when my-mac-p
-    (set-frame-font "Aporetic Sans Mono-16" nil t)
-    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-16")))
+    (defun my/mac-apply-theme (appearance)
+      "Load theme, taking current system APPEARANCE into consideration."
+      (mapc #'disable-theme custom-enabled-themes)
+      (set-frame-font "Aporetic Sans Mono-16" nil t)
+      (pcase appearance
+        ('light (load-theme 'modus-operandi-tinted t))
+        ('dark (load-theme 'modus-vivendi-tinted t))))
+    (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+    )
   (when my-linux-p
     (set-frame-font "Aporetic Sans Mono-13" nil t)
-    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-13")))
+    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-13"))
+    (load-theme 'modus-vivendi-tinted t)
+    )
   (when my-phone-p
     (load-theme 'modus-operandi-tinted t)
     (set-frame-font "Aporetic Sans Mono-17" nil t)
