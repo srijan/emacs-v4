@@ -794,7 +794,6 @@ TODO: Need to evaluate how much speedup this gives
 ** Dirvish
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dirvish
-    :if (not my-phone-p)
     :init
     (dirvish-override-dired-mode)
     :custom
@@ -803,7 +802,7 @@ TODO: Need to evaluate how much speedup this gives
        ("d" "~/Downloads/"                "Downloads")
        ("n" "~/ndxrd-uxxs3/notes/"        "Notes")
        ("o" "~/ndxrd-uxxs3/org/"          "GTD Org")
-       ("c" "~/.config/emacs-v4/"         "Config")))
+       ("c" "~/.emacs.d/"         "Config")))
     :config
     ;; (dirvish-peek-mode) ; Preview files in minibuffer
     ;; (dirvish-side-follow-mode) ; similar to `treemacs-follow-mode'
