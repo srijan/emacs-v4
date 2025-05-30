@@ -316,14 +316,18 @@ TODO: Need to evaluate how much speedup this gives
 #+end_src
 ** Looks & Themes
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (when my-mac-p
-    (set-frame-font "Aporetic Sans Mono 14" nil t))
   (when (not my-phone-p)
     (load-theme 'modus-vivendi-tinted t))
+  (when my-mac-p
+    (set-frame-font "Aporetic Sans Mono-16" nil t)
+    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-16")))
+  (when my-linux-p
+    (set-frame-font "Aporetic Sans Mono-13" nil t)
+    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-13")))
   (when my-phone-p
     (load-theme 'modus-operandi-tinted t)
-    (set-frame-font "Aporetic Sans Mono 17" nil t)
-    ;; (set-face-attribute 'default nil :height 170)
+    (set-frame-font "Aporetic Sans Mono-17" nil t)
+    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17"))
     (tool-bar-mode 1)
     (modifier-bar-mode 1)
     (setopt tool-bar-position 'top)
