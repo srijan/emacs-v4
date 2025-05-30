@@ -63,7 +63,11 @@ This file has the config that has to be loaded before the rest of the minimal-em
 * post-early-init
 
 #+begin_src emacs-lisp :tangle "post-early-init.el"
-;;; post-early-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
+  ;;; post-early-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
+  (when (not (null (getenv "ANDROID_ROOT")))
+    (setenv "PATH" (format "%s:%s" "/data/data/com.termux/files/usr/bin"
+                           (getenv "PATH")))
+    (push "/data/data/com.termux/files/usr/bin" exec-path))
 #+end_src
 
 * pre-init
@@ -181,7 +185,7 @@ TODO: Need to evaluate how much speedup this gives
 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (setq user-full-name "Srijan Choudhary"
-      user-mail-address "srijan4@gmail.com")
+        user-mail-address "srijan4@gmail.com")
 #+END_SRC
 ** Mac Specific
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -530,130 +534,130 @@ TODO: Need to evaluate how much speedup this gives
     :commands (marginalia-mode marginalia-cycle)
     ;; :init (marginalia-mode 1)
     :hook (elpaca-after-init . marginalia-mode))
-    ;; :hook (after-init . marginalia-mode)
+  ;; :hook (after-init . marginalia-mode)
 
-    (use-package embark
-      ;; Embark is an Emacs package that acts like a context menu, allowing
-      ;; users to perform context-sensitive actions on selected items
-      ;; directly from the completion interface.
-      :ensure t
-      :defer t
-      :commands (embark-act
-                 embark-dwim
-                 embark-export
-                 embark-collect
-                 embark-bindings
-                 embark-prefix-help-command)
-      :bind
-      (("C-." . embark-act)         ;; pick some comfortable binding
-       ("C-;" . embark-dwim)        ;; good alternative: M-.
-       ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
+  (use-package embark
+    ;; Embark is an Emacs package that acts like a context menu, allowing
+    ;; users to perform context-sensitive actions on selected items
+    ;; directly from the completion interface.
+    :ensure t
+    :defer t
+    :commands (embark-act
+               embark-dwim
+               embark-export
+               embark-collect
+               embark-bindings
+               embark-prefix-help-command)
+    :bind
+    (("C-." . embark-act)         ;; pick some comfortable binding
+     ("C-;" . embark-dwim)        ;; good alternative: M-.
+     ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
 
-      :init
-      (setq prefix-help-command #'embark-prefix-help-command)
+    :init
+    (setq prefix-help-command #'embark-prefix-help-command)
 
-      :config
-      ;; Hide the mode line of the Embark live/completions buffers
-      (add-to-list 'display-buffer-alist
-                   '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-                     nil
-                     (window-parameters (mode-line-format . none)))))
+    :config
+    ;; Hide the mode line of the Embark live/completions buffers
+    (add-to-list 'display-buffer-alist
+                 '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                   nil
+                   (window-parameters (mode-line-format . none)))))
 
-    (use-package embark-consult
-      :ensure t
-      :hook
-      (embark-collect-mode . consult-preview-at-point-mode))
+  (use-package embark-consult
+    :ensure t
+    :hook
+    (embark-collect-mode . consult-preview-at-point-mode))
 
-    (use-package consult
-      :ensure t
-      :bind (;; C-c bindings in `mode-specific-map'
-             ("C-c M-x" . consult-mode-command)
-             ("C-c h" . consult-history)
-             ("C-c k" . consult-kmacro)
-             ("C-c M" . consult-man)
-             ("C-c i" . consult-info)
-             ([remap Info-search] . consult-info)
-             ;; C-x bindings in `ctl-x-map'
-             ("C-x M-:" . consult-complex-command)
-             ("C-x b" . consult-buffer)
-             ("C-x 4 b" . consult-buffer-other-window)
-             ("C-x 5 b" . consult-buffer-other-frame)
-             ("C-x t b" . consult-buffer-other-tab)
-             ("C-x r b" . consult-bookmark)
-             ("C-x p b" . consult-project-buffer)
-             ;; Custom M-# bindings for fast register access
-             ("M-#" . consult-register-load)
-             ("M-'" . consult-register-store)
-             ("C-M-#" . consult-register)
-             ;; Other custom bindings
-             ("M-y" . consult-yank-pop)
-             ("C-c C-x C-<tab>" . my/consult-clock-in)
-             ;; M-g bindings in `goto-map'
-             ("M-g e" . consult-compile-error)
-             ("M-g f" . consult-flymake)
-             ("M-g g" . consult-goto-line)
-             ("M-g M-g" . consult-goto-line)
-             ("M-g o" . consult-outline)
-             ("M-g m" . consult-mark)
-             ("M-g k" . consult-global-mark)
-             ("M-g i" . consult-imenu)
-             ("M-g I" . consult-imenu-multi)
-             ;; M-s bindings in `search-map'
-             ("M-s d" . consult-find)
-             ("M-s c" . consult-locate)
-             ("M-s g" . consult-grep)
-             ("M-s G" . consult-git-grep)
-             ("M-s r" . consult-ripgrep)
-             ("M-s l" . consult-line)
-             ("M-s L" . consult-line-multi)
-             ("M-s k" . consult-keep-lines)
-             ("M-s u" . consult-focus-lines)
-             ;; Isearch integration
-             ("M-s e" . consult-isearch-history)
-             :map isearch-mode-map
-             ("M-e" . consult-isearch-history)
-             ("M-s e" . consult-isearch-history)
-             ("M-s l" . consult-line)
-             ("M-s L" . consult-line-multi)
-             ;; Minibuffer history
-             :map minibuffer-local-map
-             ("M-s" . consult-history)
-             ("M-r" . consult-history))
+  (use-package consult
+    :ensure t
+    :bind (;; C-c bindings in `mode-specific-map'
+           ("C-c M-x" . consult-mode-command)
+           ("C-c h" . consult-history)
+           ("C-c k" . consult-kmacro)
+           ("C-c M" . consult-man)
+           ("C-c i" . consult-info)
+           ([remap Info-search] . consult-info)
+           ;; C-x bindings in `ctl-x-map'
+           ("C-x M-:" . consult-complex-command)
+           ("C-x b" . consult-buffer)
+           ("C-x 4 b" . consult-buffer-other-window)
+           ("C-x 5 b" . consult-buffer-other-frame)
+           ("C-x t b" . consult-buffer-other-tab)
+           ("C-x r b" . consult-bookmark)
+           ("C-x p b" . consult-project-buffer)
+           ;; Custom M-# bindings for fast register access
+           ("M-#" . consult-register-load)
+           ("M-'" . consult-register-store)
+           ("C-M-#" . consult-register)
+           ;; Other custom bindings
+           ("M-y" . consult-yank-pop)
+           ("C-c C-x C-<tab>" . my/consult-clock-in)
+           ;; M-g bindings in `goto-map'
+           ("M-g e" . consult-compile-error)
+           ("M-g f" . consult-flymake)
+           ("M-g g" . consult-goto-line)
+           ("M-g M-g" . consult-goto-line)
+           ("M-g o" . consult-outline)
+           ("M-g m" . consult-mark)
+           ("M-g k" . consult-global-mark)
+           ("M-g i" . consult-imenu)
+           ("M-g I" . consult-imenu-multi)
+           ;; M-s bindings in `search-map'
+           ("M-s d" . consult-find)
+           ("M-s c" . consult-locate)
+           ("M-s g" . consult-grep)
+           ("M-s G" . consult-git-grep)
+           ("M-s r" . consult-ripgrep)
+           ("M-s l" . consult-line)
+           ("M-s L" . consult-line-multi)
+           ("M-s k" . consult-keep-lines)
+           ("M-s u" . consult-focus-lines)
+           ;; Isearch integration
+           ("M-s e" . consult-isearch-history)
+           :map isearch-mode-map
+           ("M-e" . consult-isearch-history)
+           ("M-s e" . consult-isearch-history)
+           ("M-s l" . consult-line)
+           ("M-s L" . consult-line-multi)
+           ;; Minibuffer history
+           :map minibuffer-local-map
+           ("M-s" . consult-history)
+           ("M-r" . consult-history))
 
-      ;; Enable automatic preview at point in the *Completions* buffer.
-      :hook (completion-list-mode . consult-preview-at-point-mode)
+    ;; Enable automatic preview at point in the *Completions* buffer.
+    :hook (completion-list-mode . consult-preview-at-point-mode)
 
-      :init
-      ;; Optionally configure the register formatting. This improves the register
-      (setq register-preview-delay 0.5
-            register-preview-function #'consult-register-format)
+    :init
+    ;; Optionally configure the register formatting. This improves the register
+    (setq register-preview-delay 0.5
+          register-preview-function #'consult-register-format)
 
-      ;; Optionally tweak the register preview window.
-      (advice-add #'register-preview :override #'consult-register-window)
+    ;; Optionally tweak the register preview window.
+    (advice-add #'register-preview :override #'consult-register-window)
 
-      ;; Use Consult to select xref locations with preview
-      (setq xref-show-xrefs-function #'consult-xref
-            xref-show-definitions-function #'consult-xref)
+    ;; Use Consult to select xref locations with preview
+    (setq xref-show-xrefs-function #'consult-xref
+          xref-show-definitions-function #'consult-xref)
 
-      (defun my/consult-clock-in ()
-        "Use consult-org-agenda to select and clock into a task without changing current buffer."
-        (interactive)
-        (let ((original-buffer (current-buffer)))
-          (when-let (marker (consult-org-agenda))
-            (org-with-point-at marker
-              (org-clock-in)))
-          (switch-to-buffer original-buffer)))
+    (defun my/consult-clock-in ()
+      "Use consult-org-agenda to select and clock into a task without changing current buffer."
+      (interactive)
+      (let ((original-buffer (current-buffer)))
+        (when-let (marker (consult-org-agenda))
+          (org-with-point-at marker
+            (org-clock-in)))
+        (switch-to-buffer original-buffer)))
 
-      :config
-      (consult-customize
-       consult-theme :preview-key '(:debounce 0.2 any)
-       consult-ripgrep consult-git-grep consult-grep
-       consult-bookmark consult-recent-file consult-xref
-       consult--source-bookmark consult--source-file-register
-       consult--source-recent-file consult--source-project-recent-file
-       ;; :preview-key "M-."
-       :preview-key '(:debounce 0.4 any))
-      (setq consult-narrow-key "<"))
+    :config
+    (consult-customize
+     consult-theme :preview-key '(:debounce 0.2 any)
+     consult-ripgrep consult-git-grep consult-grep
+     consult-bookmark consult-recent-file consult-xref
+     consult--source-bookmark consult--source-file-register
+     consult--source-recent-file consult--source-project-recent-file
+     ;; :preview-key "M-."
+     :preview-key '(:debounce 0.4 any))
+    (setq consult-narrow-key "<"))
 
 #+end_src
 ** Code Folding
@@ -725,22 +729,22 @@ TODO: Need to evaluate how much speedup this gives
     (evil-want-Y-yank-to-eol t)
     :config
     (evil-declare-key 'normal org-mode-map
-      "gk" 'outline-up-heading
-      "gj" 'outline-next-visible-heading
-      "H" 'org-beginning-of-line
-      "L" 'org-end-of-line
-      "t" 'org-todo
-      (kbd "<tab>") 'org-cycle
-      ",c" 'org-cycle
-      ",e" 'org-export-dispatch
-      ",n" 'outline-next-visible-heading
-      ",p" 'outline-previous-visible-heading
-      ",t" 'org-set-tags-command
-      ",u" 'outline-up-heading
-      "$" 'org-end-of-line
-      "^" 'org-beginning-of-line
-      "-" 'org-ctrl-c-minus ; change bullet style
-      )
+                      "gk" 'outline-up-heading
+                      "gj" 'outline-next-visible-heading
+                      "H" 'org-beginning-of-line
+                      "L" 'org-end-of-line
+                      "t" 'org-todo
+                      (kbd "<tab>") 'org-cycle
+                      ",c" 'org-cycle
+                      ",e" 'org-export-dispatch
+                      ",n" 'outline-next-visible-heading
+                      ",p" 'outline-previous-visible-heading
+                      ",t" 'org-set-tags-command
+                      ",u" 'outline-up-heading
+                      "$" 'org-end-of-line
+                      "^" 'org-beginning-of-line
+                      "-" 'org-ctrl-c-minus ; change bullet style
+                      )
 
     (evil-select-search-module 'evil-search-module 'evil-search)
     (evil-mode 1))
@@ -792,9 +796,9 @@ TODO: Need to evaluate how much speedup this gives
 
   (with-eval-after-load "evil"
     (evil-define-operator my-evil-comment-or-uncomment (beg end)
-      "Toggle comment for the region between BEG and END."
-      (interactive "<r>")
-      (comment-or-uncomment-region beg end))
+                          "Toggle comment for the region between BEG and END."
+                          (interactive "<r>")
+                          (comment-or-uncomment-region beg end))
     (evil-define-key 'normal 'global (kbd "gc") 'my-evil-comment-or-uncomment))
 
   (use-package evil-snipe
@@ -824,6 +828,7 @@ TODO: Need to evaluate how much speedup this gives
 ** Dirvish
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dirvish
+    :if (not my-phone-p)
     :init
     (dirvish-override-dired-mode)
     :custom
@@ -1467,6 +1472,7 @@ TODO: Need to evaluate how much speedup this gives
 #+begin_src emacs-lisp :tangle "post-init.el"
 
   (use-package gptel
+    :if (not my-phone-p)
     :bind
     ("C-c g g" . (lambda () (interactive) 
                    (switch-to-buffer (gptel "*Claude*"))))
@@ -1483,6 +1489,7 @@ TODO: Need to evaluate how much speedup this gives
                      ))
     )
   (use-package gptel-tool-library
+    :if (not my-phone-p)
     :ensure (:host github :repo "aard-fi/gptel-tool-library")
     :after gptel
     :init
@@ -1498,6 +1505,7 @@ TODO: Need to evaluate how much speedup this gives
 
 
   (use-package copilot
+    :if (not my-phone-p)
     :diminish
     ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
     :ensure t
@@ -1523,11 +1531,13 @@ TODO: Need to evaluate how much speedup this gives
     )
 
   (use-package auth-source-1password
+    :if (not my-phone-p)
     :demand t
     :config
     (auth-source-1password-enable))
 
   (use-package chatgpt-shell
+    :if (not my-phone-p)
     :ensure t
     :custom
     ((chatgpt-shell-openai-key
@@ -1537,9 +1547,10 @@ TODO: Need to evaluate how much speedup this gives
 #+end_src
 ** Misc for software dev
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package mermaid-mode)
-  (use-package sql-indent)
-  (use-package xmind-org)
+  (when (not my-phone-p)
+    (use-package mermaid-mode)
+    (use-package sql-indent)
+    (use-package xmind-org))
 #+END_SRC
 ** Language Modes
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -1671,6 +1682,7 @@ TODO: Need to evaluate how much speedup this gives
      'load-path (car (file-expand-wildcards
                       "/opt/homebrew/share/emacs/site-lisp/mu/mu4e"))))
   (use-package mu4e
+    :if (not my-phone-p)
     :ensure nil
     ;; :if my-linux-p
     ;; :hook (evil-collection-setup . (lambda (&rest a)
@@ -1888,6 +1900,7 @@ TODO: Need to evaluate how much speedup this gives
     )
 
   (use-package smtpmail
+    :if (not my-phone-p)
     ;; :if my-linux-p
     :ensure nil
     :config
@@ -2052,6 +2065,7 @@ TODO: Need to evaluate how much speedup this gives
 ** JIRA
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jira
+    :if (not my-phone-p)
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
     :config
     ;; (with-eval-after-load "evil"
@@ -2079,6 +2093,7 @@ TODO: Need to evaluate how much speedup this gives
 ** Slack
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package slack
+    :if (not my-phone-p)
     :ensure (:host github :repo "emacs-slack/emacs-slack")
     :bind (("C-c s K" . slack-stop)
            ("C-c s c" . slack-select-rooms)
@@ -2136,6 +2151,7 @@ TODO: Need to evaluate how much speedup this gives
   (use-package emojify
     :hook (after-init . global-emojify-mode))
   (use-package mastodon
+    :if (not my-phone-p)
     ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
     :ensure t
     :config
@@ -2161,26 +2177,27 @@ TODO: Need to evaluate how much speedup this gives
     :hook ((eww-after-render-hook . apt-open-reddit-if-url-matches))
     )
 
-#+end_src
+  #+end_src
 ** Desktop Utilities
 
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (defun sj/default-browser (&optional name)
-    "Set the default browser based on the given NAME."
-    (interactive
-     (list
-      (completing-read
-       "Browser: "
-       (split-string
-        (shell-command-to-string
-         "find /usr/share/applications ~/.local/share/applications -name \"*.desktop\" -exec grep -l \"Categories=.*WebBrowser\" {} \\;")
-        "\n" t))))
-    (let ((browser-desktop (file-name-nondirectory name)))
-      (shell-command (format "xdg-mime default %s text/html" browser-desktop))
-      (shell-command (format "xdg-mime default %s application/xhtml+xml" browser-desktop))
-      (shell-command (format "xdg-mime default %s application/x-extension-html" browser-desktop))
-      (shell-command (format "xdg-settings set default-web-browser %s" browser-desktop))))
+  (when my-linux-p
+    (defun sj/default-browser (&optional name)
+      "Set the default browser based on the given NAME."
+      (interactive
+       (list
+        (completing-read
+         "Browser: "
+         (split-string
+          (shell-command-to-string
+           "find /usr/share/applications ~/.local/share/applications -name \"*.desktop\" -exec grep -l \"Categories=.*WebBrowser\" {} \\;")
+          "\n" t))))
+      (let ((browser-desktop (file-name-nondirectory name)))
+        (shell-command (format "xdg-mime default %s text/html" browser-desktop))
+        (shell-command (format "xdg-mime default %s application/xhtml+xml" browser-desktop))
+        (shell-command (format "xdg-mime default %s application/x-extension-html" browser-desktop))
+        (shell-command (format "xdg-settings set default-web-browser %s" browser-desktop)))))
 
   (defun gpg-sign (&optional text)
     "Sign the given TEXT with GPG, and copy the results to the clipboard."
@@ -2193,6 +2210,7 @@ TODO: Need to evaluate how much speedup this gives
 ** Homeassistant
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package hass
+    :if (not my-phone-p)
     :ensure t
     :custom
     ;; -- Configuration goes here --
