@@ -341,9 +341,19 @@ TODO: Need to evaluate how much speedup this gives
     (set-frame-font "Aporetic Sans Mono-17" nil t)
     (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17"))
     (tool-bar-mode 1)
-    (modifier-bar-mode 1)
+    ;; (modifier-bar-mode 1)
     (setopt tool-bar-position 'top)
     (setopt tool-bar-button-margin 20)
+    (setopt touch-screen-display-keyboard t)
+    (setopt touch-screen-precision-scroll t)
+    (setopt pixel-scroll-precision-use-momentum t)
+    (use-package touchpad
+      :disabled
+      :ensure (:host github :repo ("awu7/touchpad-scroll-mode" . "touchpad")
+                     :main "touchpad.el")
+      :config
+      (touchpad-scroll-mode)
+      (setq touchpad-pixel-scroll t))
     )
 
   ;; Fast and smooth scrolling
