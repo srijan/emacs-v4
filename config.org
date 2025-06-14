@@ -28,7 +28,7 @@ evaluate the following code block or do =C-c C-v C-t=. All files will
 be updated accordingly.
 
 #+begin_src emacs-lisp :tangle no :results none
-(org-babel-tangle)
+  (org-babel-tangle)
 #+end_src
 
 * pre-early-init
@@ -315,27 +315,45 @@ TODO: Need to evaluate how much speedup this gives
 
 #+end_src
 ** Looks & Themes
+*** Non-Android
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when (not my-phone-p)
-    (add-to-list 'default-frame-alist '(height . 55))
-    (add-to-list 'default-frame-alist '(width . 160))
+    ;; (add-to-list 'default-frame-alist '(height . 55))
+    ;; (add-to-list 'default-frame-alist '(width . 160))
     (setopt scroll-bar-mode 'right)
     (scroll-bar-mode 1))
+#+end_src
+*** Mac
+#+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
     (defun my/mac-apply-theme (appearance)
       "Load theme, taking current system APPEARANCE into consideration."
       (mapc #'disable-theme custom-enabled-themes)
-      (set-frame-font "Aporetic Sans Mono-16" nil t)
+      ;; (set-frame-font "Aporetic Sans Mono-15" nil t)
+      (set-face-font 'default "Berkeley Mono-15")
+      (set-face-font 'variable-pitch "Inter-15")
       (pcase appearance
         ('light (load-theme 'modus-operandi-tinted t))
         ('dark (load-theme 'modus-vivendi-tinted t))))
     (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+
+    (setopt ns-use-srgb-colorspace nil)
+    (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
+    ;; (add-to-list 'default-frame-alist '(ns-appearance . dark))
+
+    ;; (use-package calle24 :demand t)
     )
+      #+end_src
+*** Linux
+#+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
     (set-frame-font "Aporetic Sans Mono-13" nil t)
     (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-13"))
     (load-theme 'modus-vivendi-tinted t)
     )
+#+end_src
+*** Phone
+#+begin_src emacs-lisp :tangle "post-init.el"
   (when my-phone-p
     (load-theme 'modus-operandi-tinted t)
     (set-frame-font "Aporetic Sans Mono-17" nil t)
@@ -355,7 +373,9 @@ TODO: Need to evaluate how much speedup this gives
       (touchpad-scroll-mode)
       (setq touchpad-pixel-scroll t))
     )
-
+#+end_src
+*** Generic
+#+begin_src emacs-lisp :tangle "post-init.el"
   ;; Fast and smooth scrolling
   (use-package ultra-scroll
     :disabled
@@ -371,11 +391,9 @@ TODO: Need to evaluate how much speedup this gives
     :bind (("C-c e" . emoji-search))
     )
 
-  ;; (load-theme 'modus-vivendi-tinted t)
   (use-package ef-themes
     :if (display-graphic-p)
     :disabled
-    :demand
     :custom
     (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
     (ef-themes-headings
@@ -388,16 +406,16 @@ TODO: Need to evaluate how much speedup this gives
     (ef-themes-mixed-fonts t)
     (ef-themes-variable-pitch-ui t)
     :hook ((ef-themes-post-load . my-ef-themes-mode-line))
-    ;; (ef-themes-post-load . fontaine-apply-current-preset))
+    ;; (ef-themes-post-load . fontaine-apply-current-preset)
     :config
     (defun my-ef-themes-mode-line ()
       "Tweak the style of the mode lines."
       (ef-themes-with-colors
-       (custom-set-faces
-        `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
-        `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+        (custom-set-faces
+         `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+         `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
     :init
-    (ef-themes-select 'ef-maris-light)
+    (ef-themes-select 'ef-duo-dark)
     )
   (use-package olivetti
     :bind (("C-c =" . olivetti-mode))
@@ -408,6 +426,8 @@ TODO: Need to evaluate how much speedup this gives
   ;; (use-package spacious-padding)
 #+end_src
 ** Tool Bar
+I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
+
 #+begin_src emacs-lisp :tangle "post-init.el"
   (setq tool-bar-style 'image)
   ;; (tool-bar-mode 1)
@@ -802,13 +822,40 @@ TODO: Need to evaluate how much speedup this gives
     :config
     (timu-line-mode 1))
   (use-package all-the-icons)
-  ;;(use-package nerd-icons)
+  ;; (use-package nerd-icons)
   (use-package doom-modeline
+    :elpaca (:host github :repo "seagle0128/doom-modeline")
+    :demand
     :ensure t
     :init
-    (doom-modeline-mode 1))
+    (doom-modeline-mode 1)
+    :custom
+    (doom-modeline-buffer-encoding nil))
   (use-package hide-mode-line :demand t)
-#+end_src
+  (use-package nano-modeline
+    :disabled
+    :config
+    (setopt mode-line-format nil)
+    (nano-modeline-text-mode t)
+    (add-hook 'prog-mode-hook            #'nano-modeline-prog-mode)
+    (add-hook 'text-mode-hook            #'nano-modeline-text-mode)
+    (add-hook 'org-mode-hook             #'nano-modeline-org-mode)
+    (add-hook 'pdf-view-mode-hook        #'nano-modeline-pdf-mode)
+    (add-hook 'mu4e-headers-mode-hook    #'nano-modeline-mu4e-headers-mode)
+    (add-hook 'mu4e-view-mode-hook       #'nano-modeline-mu4e-message-mode)
+    (add-hook 'mu4e-compose-mode-hook    #'nano-modeline-mu4e-compose-mode)
+    (add-hook 'elfeed-show-mode-hook     #'nano-modeline-elfeed-entry-mode)
+    (add-hook 'elfeed-search-mode-hook   #'nano-modeline-elfeed-search-mode)
+    ;; (add-hook 'elpher-mode-hook          #'nano-modeline-elpher-mode)
+    (add-hook 'term-mode-hook            #'nano-modeline-term-mode)
+    (add-hook 'eat-mode-hook             #'nano-modeline-eat-mode)
+    (add-hook 'xwidget-webkit-mode-hook  #'nano-modeline-xwidget-mode)
+    (add-hook 'messages-buffer-mode-hook #'nano-modeline-message-mode)
+    (add-hook 'org-capture-mode-hook     #'nano-modeline-org-capture-mode)
+    (add-hook 'org-agenda-mode-hook      #'nano-modeline-org-agenda-mode)
+    )
+
+        #+end_src
 ** Dirvish
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dirvish
@@ -857,7 +904,7 @@ TODO: Need to evaluate how much speedup this gives
 #+begin_src emacs-lisp :tangle "post-init.el"
   (elpaca-process-queues)
 #+end_src
-** Term Mode Stuff
+** Shell and Terminals
 #+begin_src emacs-lisp :tangle "post-init.el"
   ;; (defun bb/setup-term-mode ()
   ;;   (evil-local-set-key 'insert (kbd "C-r") 'bb/send-C-r))
@@ -868,23 +915,39 @@ TODO: Need to evaluate how much speedup this gives
 
   ;; (add-hook 'term-mode-hook 'bb/setup-term-mode)
 
-  (when my-linux-p
-    (use-package multi-term))
+  (when (or my-linux-p my-mac-p)
+    (use-package multi-term)
+    (use-package eat)
+    (use-package vterm)
+    (use-package multi-vterm)
+    (use-package eshell-atuin
+      :after eshell
+      :demand t
+      :bind (:map eshell-hist-mode-map ("M-r" . eshell-atuin-history))
+      :config
+      (eshell-atuin-mode)
+      (setq eshell-atuin-search-fields '(time duration command))
+      (setq eshell-atuin-history-format "%-160c %t + %d")
+      )
+    )
 
   (when my-windows-p
     (use-package powershell))
 
-  (use-package eat)
-  ;; (straight-use-package
-  ;;  '(eat :type git
-  ;;        :host codeberg
-  ;;        :repo "akib/emacs-eat"
-  ;;        :files ("*.el" ("term" "term/*.el") "*.texi"
-  ;;                "*.ti" ("terminfo/e" "terminfo/e/*")
-  ;;                ("terminfo/65" "terminfo/65/*")
-  ;;                ("integration" "integration/*")
-  ;;                (:exclude ".dir-locals.el" "*-tests.el"))))
+#+end_src
+** Authentication and Passwords
+I'm using 1password for all passwords.
 
+But, I'm not satisfied, because this starts a 1password auth prompt window for each different password asked. Ideal workflow would be to ask for password or fingerprint once at the beginning (or on first use) and then cache it as long as the Emacs session is active (or only forget if it the OS is locked).
+
+One alternative can be to have a separate script to copy the required passwords from 1password to authinfo.gpg and use authinfo.gpg
+
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package auth-source-1password
+    :if (not my-phone-p)
+    :demand t
+    :config
+    (auth-source-1password-enable))
 #+end_src
 ** Org and GTD
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -939,6 +1002,38 @@ TODO: Need to evaluate how much speedup this gives
     (run-with-timer 1 60 'current-clock-time-to-file)
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    ;; Skip duplicate entries in calendar main files
+    ;; (defun org-entry-exists-in-other-file-p ()
+    ;;   "Check if current entry exists in another agenda file.
+    ;;    Compares headline text and scheduled/deadline dates."
+    ;;   (let* ((current-file (buffer-file-name))
+    ;;          (headline (org-get-heading t t t t))
+    ;;          (scheduled (org-get-scheduled-time (point)))
+    ;;          (deadline (org-get-deadline-time (point)))
+    ;;          (other-files (remove current-file org-agenda-files)))
+    ;;
+    ;;     (catch 'found
+    ;;       (dolist (file other-files)
+    ;;         (when (file-exists-p file)
+    ;;           (with-current-buffer (find-file-noselect file)
+    ;;             (org-map-entries
+    ;;              (lambda ()
+    ;;                (when (and (string= headline (org-get-heading t t t t))
+    ;;                           (equal scheduled (org-get-scheduled-time (point)))
+    ;;                           (equal deadline (org-get-deadline-time (point))))
+    ;;                  (throw 'found t)))
+    ;;              nil 'file))))
+    ;;       nil)))
+
+    ;; (defun org-agenda-skip-duplicates-from-calendar ()
+    ;;   "Skip function to ignore entries from calendar.org if they exist elsewhere."
+    ;;   (when (and (buffer-file-name)
+    ;;              (string-match "calendar\\.org$" (buffer-file-name))
+    ;;              (org-entry-exists-in-other-file-p))
+    ;;     (org-end-of-subtree t)))
+
+    ;;(setq org-agenda-skip-function 'org-agenda-skip-duplicates-from-calendar)
 
     (when my-mac-p
       (defun my/focus-clock-in ()
@@ -1091,61 +1186,165 @@ TODO: Need to evaluate how much speedup this gives
 #+END_SRC
 ** Calendar
 #+begin_src emacs-lisp :tangle "post-init.el"
-    (setq safe-local-variable-values
-          (quote
-           ((buffer-read-only . 1))))
-    (use-package khalel
-      :after org
-      :demand t
-      :config
-      (setq khalel-import-org-file (expand-file-name "calendar.org" org-gtd-directory))
-      (setq khalel-import-org-file-confirm-overwrite nil)
-      (setq khalel-import-start-date "-7d")
-      (setq khalel-vdirsyncer-command "vdirsyncer")
-      (setq khalel-import-format
-            (concat "* Calendar: {title} {cancelled}{partstat-symbol}\n"
-                    ":PROPERTIES:\n:CALENDAR: {calendar}\n:LOCATION: {location}\n:ID: {uid}\n:END:\n"
-                    "- When: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>\n"
-                    "- Where: {location}\n"
-                    "- Description: {description}\n"
-                    "- URL: {url}\n"
-                    "- Organizer: {organizer}\n"))
-      (setq khalel-import-org-file-header
-            (concat "#+TITLE: calendar\n"
-                    "#+COLUMNS: %ITEM %TIMESTAMP %LOCATION %CALENDAR\n"
-                    "#+FILETAGS: :@calendar: \n\n"
-                    "*NOTE*: this file has been generated by [[elisp:(khalel-import-events)][khalel-import-events]] and "
-                    "/any changes to this document will be lost on the next import/!\n\n"
-                    "You can use [[elisp:(khalel-run-vdirsyncer)][khalel-run-vdirsyncer]] to synchronize with remote calendars.\n\n"
-                    "Consider adding this file to your list of agenda files so that events show up there.\n\n")))
-    (defun my/copy-calendar-task-to-inbox (orig-fun &rest args)
-      "Copy task from calendar.org to inbox.org before clocking in"
-      (let* ((marker (org-get-at-bol 'org-marker))
-             (file-name (if marker
-                            (buffer-file-name (marker-buffer marker))
-                          (buffer-file-name)))
-             (calendar-file (expand-file-name "calendar.org" org-gtd-directory))
-             (inbox-file (expand-file-name "inbox.org" org-gtd-directory)))
-        (if (and file-name
-                 (string= file-name calendar-file))
-            (save-excursion
-              (when marker
-                (org-goto-marker-or-bmk marker))
-              (let* ((task-title (org-get-heading t t t t))
-                     (task-body (org-get-entry))
-                     (inbox-buffer (find-file-noselect inbox-file)))
-                (with-current-buffer inbox-buffer
-                  (let ((original-point (point-max)))
-                    (goto-char original-point)
-                    (insert "\n* " task-title "\n" task-body)
-                    (save-buffer)
-                    (goto-char original-point)
-                    (forward-line 1)
-                    (apply orig-fun args)))))
-          ;; If not in calendar.org, just run the original function
-          (apply orig-fun args))))
+  (setq safe-local-variable-values
+        (quote
+         ((buffer-read-only . 1))))
+  (use-package khalel
+    :ensure (:host gitlab :repo "hperrey/khalel" :branch "master")
+    :after org
+    :demand t
+    :config
+    (setq khalel-import-org-file (expand-file-name "calendar.org" org-gtd-directory))
+    (setq khalel-import-org-file-confirm-overwrite nil)
+    (setq khalel-import-start-date "-3d")
+    (setq khalel-import-end-date "+3d")
+    (setq khalel-vdirsyncer-command "vdirsyncer")
+    (setq khalel-vdirsyncer-extra-options "-verror")
+    (setq khalel-import-format
+          (concat "* Calendar: {title} {cancelled}{partstat-symbol}\n"
+                  ;; "SCHEDULED: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>\n"
+                  ":PROPERTIES:\n:CALENDAR: {calendar}\n:LOCATION: {location}\n:ID: {uid}\n:END:\n"
+                  "- When: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>\n"
+                  "- Where: {location}\n"
+                  "- Description: {description}\n"
+                  "- URL: {url}\n"
+                  "- Organizer: {organizer}\n"))
+    (setq khalel-import-org-file-header
+          (concat
+           ;; "# -*- org-scheduled-past-days: 0; -*-\n"
+           "#+TITLE: calendar\n"
+           "#+COLUMNS: %ITEM %TIMESTAMP %LOCATION %CALENDAR\n"
+           "#+FILETAGS: :@calendar: \n\n"
+           "*NOTE*: this file has been generated by [[elisp:(khalel-import-events)][khalel-import-events]] and "
+           "/any changes to this document will be lost on the next import/!\n\n"
+           "You can use [[elisp:(khalel-run-vdirsyncer)][khalel-run-vdirsyncer]] to synchronize with remote calendars.\n\n"
+           "Consider adding this file to your list of agenda files so that events show up there.\n\n")))
 
-    (advice-add 'org-clock-in :around #'my/copy-calendar-task-to-inbox)
+  (defun my/copy-calendar-task-to-inbox (orig-fun &rest args)
+    "Copy task from calendar.org to inbox.org before clocking in"
+    (let* ((marker (org-get-at-bol 'org-marker))
+           (file-name (if marker
+                          (buffer-file-name (marker-buffer marker))
+                        (buffer-file-name)))
+           (calendar-file (expand-file-name "calendar.org" org-gtd-directory))
+           (inbox-file (expand-file-name "inbox.org" org-gtd-directory)))
+      (if (and file-name
+               (string= file-name calendar-file))
+          (save-excursion
+            (when marker
+              (org-goto-marker-or-bmk marker))
+            (let* ((task-title (org-get-heading t t t t))
+                   (task-body (org-get-entry))
+                   (inbox-buffer (find-file-noselect inbox-file)))
+              (with-current-buffer inbox-buffer
+                (let ((original-point (point-max)))
+                  (goto-char original-point)
+                  (insert "\n* " task-title "\n" task-body)
+                  (save-buffer)
+                  (goto-char original-point)
+                  (forward-line 1)
+                  (apply orig-fun args)))))
+        ;; If not in calendar.org, just run the original function
+        (apply orig-fun args))))
+
+  (advice-add 'org-clock-in :around #'my/copy-calendar-task-to-inbox)
+
+  (defun my/complete-calendar-task ()
+    "Copy current calendar task to inbox.org, add logbook entry, and mark done."
+    (interactive)
+    (let* ((calendar-file (expand-file-name "calendar.org" org-gtd-directory))
+           (inbox-file (expand-file-name "inbox.org" org-gtd-directory))
+           (marker (or (org-get-at-bol 'org-marker) (point-marker)))
+           (source-file (if marker
+                            (buffer-file-name (marker-buffer marker))
+                          (buffer-file-name))))
+      
+      ;; Check if the task is from calendar.org
+      (unless (and source-file (string= source-file calendar-file))
+        (error "This function should be called on tasks from calendar.org"))
+      
+      ;; Work with the task at the marker position
+      (with-current-buffer (marker-buffer marker)
+        (save-excursion
+          (goto-char marker)
+          (org-back-to-heading t)
+          
+          ;; Get task information - but limit to current entry only
+          (let* ((task-title (org-get-heading t t t t))
+                 (entry-start (point))
+                 (entry-end (save-excursion (org-end-of-subtree t t)))
+                 ;; Extract start and end times from THIS entry only
+                 (when-line (save-excursion
+                              (goto-char entry-start)
+                              (if (re-search-forward "- When: \\(<.*?>\\)--\\(<.*?>\\)" entry-end t)
+                                  (list (match-string 1) (match-string 2))
+                                nil))))
+            
+            (unless when-line
+              (error "Could not find start and end times in this task"))
+            
+            (let* ((start-time-angular (car when-line))
+                   (end-time-angular (cadr when-line))
+                   ;; Convert angular brackets to square brackets for CLOCK entries
+                   (start-time-square (replace-regexp-in-string "<\\|>" (lambda (match) (if (string= match "<") "[" "]")) start-time-angular))
+                   (end-time-square (replace-regexp-in-string "<\\|>" (lambda (match) (if (string= match "<") "[" "]")) end-time-angular))
+                   ;; Calculate duration
+                   (start-time (org-parse-time-string start-time-angular))
+                   (end-time (org-parse-time-string end-time-angular))
+                   (start-seconds (+ (* (nth 2 start-time) 3600) (* (nth 1 start-time) 60)))
+                   (end-seconds (+ (* (nth 2 end-time) 3600) (* (nth 1 end-time) 60)))
+                   (duration-seconds (- end-seconds start-seconds))
+                   (duration-hours (/ duration-seconds 3600))
+                   (duration-minutes (/ (% duration-seconds 3600) 60))
+                   (duration-string (format "%d:%02d" duration-hours duration-minutes)))
+              
+              ;; Parse the entry content more carefully
+              (goto-char entry-start)
+              (forward-line 1) ;; Skip the heading
+              (let* ((content-start (point))
+                     (properties-start (and (re-search-forward "^:PROPERTIES:$" entry-end t)
+                                            (line-beginning-position)))
+                     (properties-end (and properties-start
+                                          (re-search-forward "^:END:$" entry-end t)
+                                          (line-end-position)))
+                     (properties-content (and properties-start properties-end
+                                              (buffer-substring-no-properties properties-start properties-end)))
+                     (remaining-content (and properties-end
+                                             (buffer-substring-no-properties (1+ properties-end) entry-end)))
+                     ;; Convert angular brackets to square brackets only on "- When:" lines
+                     (remaining-content-fixed (and remaining-content
+                                                   (replace-regexp-in-string 
+                                                    "^- When: <\\([^>]+\\)>--<\\([^>]+\\)>$"
+                                                    "- When: [\\1]--[\\2]"
+                                                    remaining-content nil nil nil))))
+                
+                ;; Copy task to inbox.org
+                (with-current-buffer (find-file-noselect inbox-file)
+                  (goto-char (point-max))
+                  (insert "\n* DONE " task-title "\n")
+                  ;; Set CLOSED timestamp to match event end time
+                  (insert "CLOSED: " end-time-square "\n")
+                  
+                  ;; Insert properties drawer if it exists
+                  (when properties-content
+                    (insert properties-content "\n"))
+                  
+                  ;; Insert logbook
+                  (insert ":LOGBOOK:\n")
+                  (insert "CLOCK: " start-time-square "--" end-time-square " => " duration-string "\n")
+                  (insert ":END:\n")
+                  
+                  ;; Insert remaining content (the body after properties) with fixed When line
+                  (when remaining-content-fixed
+                    (insert remaining-content-fixed))
+                  
+                  ;; Save the inbox file
+                  (save-buffer)
+                  
+                  ;; Position cursor at the new task
+                  (org-back-to-heading t)))
+              
+              (message "Calendar task copied to inbox.org and marked as DONE with logbook entry")))))))
 
 #+end_src
 ** Org in Android
@@ -1209,21 +1408,6 @@ TODO: Need to evaluate how much speedup this gives
     (tool-bar-add-item "save" 'org-save-all-org-buffers 'save-all-org
                        :help "Save all modified org buffers")
     )
-#+end_src
-** COMMENT Org Caldav
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package org-caldav
-    :config
-    ;; TODO: Move to 1password
-    (setq org-caldav-url "https://caldav.fastmail.com/dav/calendars/user/srijan@fastmail.com")
-    (setq org-caldav-calendar-id "a2dd79ef-d53e-4ce2-add4-ab72396802e4")
-
-    (setq org-caldav-inbox (expand-file-name "calendar.org" minimal-emacs-var-dir))
-    (setq org-caldav-files nil)
-    (setq org-icalendar-timezone "America/New_York")
-    (setq org-caldav-sync-direction 'cal->org)
-    (setq org-caldav-sync-changes-to-org 'all)
-    (setq org-caldav-delete-calendar-entries 'never))
 #+end_src
 ** Popup frames
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -1526,7 +1710,7 @@ TODO: Need to evaluate how much speedup this gives
     ("C-c g r" . gptel-rewrite)
     :config
     (setq
-     gptel-model 'claude-3-5-sonnet-20241022
+     gptel-model 'claude-sonnet-4-20250514
      gptel-backend (gptel-make-anthropic "Claude"
                      :stream t
                      :key (lambda ()
@@ -1574,12 +1758,6 @@ TODO: Need to evaluate how much speedup this gives
     (add-to-list 'copilot-indentation-alist '(emacs-lisp-mode 2))
     (add-to-list 'copilot-indentation-alist '(markdown-mode 2))
     )
-
-  (use-package auth-source-1password
-    :if (not my-phone-p)
-    :demand t
-    :config
-    (auth-source-1password-enable))
 
   (use-package chatgpt-shell
     :if (not my-phone-p)
@@ -1688,6 +1866,11 @@ TODO: Need to evaluate how much speedup this gives
       :ensure nil
       :hook (erlang-mode . eglot-ensure)
       :config
+      (add-to-list 'eglot-server-programs
+                   `(erlang-mode . ,(eglot-alternatives
+                                     '(("erlang_ls" "--transport" "stdio")
+                                       ("elp" "--log-file" "elp.log" "server")))))
+
       (add-hook 'eglot-managed-mode-hook
                 (lambda ()
                   ;; Show flymake diagnostics first.
@@ -1765,7 +1948,7 @@ TODO: Need to evaluate how much speedup this gives
      mu4e-hide-index-messages t
      message-kill-buffer-on-exit t
      shr-color-visible-luminance-min 80
-     mu4e-index-cleanup t ;; set to nil if indexing is slow
+     mu4e-index-cleanup nil ;; set to nil if indexing is slow
      )
 
 
@@ -2224,7 +2407,6 @@ TODO: Need to evaluate how much speedup this gives
 
   #+end_src
 ** Desktop Utilities
-
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
