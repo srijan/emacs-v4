@@ -320,7 +320,6 @@ TODO: Need to evaluate how much speedup this gives
   (when (not my-phone-p)
     ;; (add-to-list 'default-frame-alist '(height . 55))
     ;; (add-to-list 'default-frame-alist '(width . 160))
-    (setopt scroll-bar-mode 'right)
     (scroll-bar-mode 1))
 #+end_src
 *** Mac
@@ -330,8 +329,8 @@ TODO: Need to evaluate how much speedup this gives
       "Load theme, taking current system APPEARANCE into consideration."
       (mapc #'disable-theme custom-enabled-themes)
       ;; (set-frame-font "Aporetic Sans Mono-15" nil t)
-      (set-face-font 'default "Berkeley Mono-15")
-      (set-face-font 'variable-pitch "Inter-15")
+      (set-face-font 'default "IBM Plex Mono-15")
+      ;; (set-face-font 'variable-pitch "Inter-15")
       (pcase appearance
         ('light (load-theme 'modus-operandi-tinted t))
         ('dark (load-theme 'modus-vivendi-tinted t))))
@@ -343,7 +342,7 @@ TODO: Need to evaluate how much speedup this gives
 
     ;; (use-package calle24 :demand t)
     )
-      #+end_src
+#+end_src
 *** Linux
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
@@ -411,19 +410,23 @@ TODO: Need to evaluate how much speedup this gives
     (defun my-ef-themes-mode-line ()
       "Tweak the style of the mode lines."
       (ef-themes-with-colors
-        (custom-set-faces
-         `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
-         `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+       (custom-set-faces
+        `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+        `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
     :init
     (ef-themes-select 'ef-duo-dark)
     )
   (use-package olivetti
+    :disabled
     :bind (("C-c =" . olivetti-mode))
     :custom
     (olivetti-style 'fancy)
     ;; (olivetti-fringe '(:background "#e5e5e5"))
     )
-  ;; (use-package spacious-padding)
+  (use-package spacious-padding
+    :demand t
+    :config
+    (spacious-padding-mode 1))
 #+end_src
 ** Tool Bar
 I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
@@ -453,7 +456,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   ;; be dragged with the mouse, thus allowing you to easily resize adjacent
   ;; windows.
   ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
-  (add-hook 'after-init-hook #'window-divider-mode)
+  ;; (add-hook 'after-init-hook #'window-divider-mode)
 
 #+END_SRC
 ** COMMENT Tabs
@@ -579,7 +582,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
            ("C-c h" . consult-history)
            ("C-c k" . consult-kmacro)
            ("C-c M" . consult-man)
-           ("C-c i" . consult-info)
+           ;; ("C-c i" . consult-info)
            ([remap Info-search] . consult-info)
            ;; C-x bindings in `ctl-x-map'
            ("C-x M-:" . consult-complex-command)
@@ -824,14 +827,13 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   (use-package all-the-icons)
   ;; (use-package nerd-icons)
   (use-package doom-modeline
-    :elpaca (:host github :repo "seagle0128/doom-modeline")
+    :ensure (:host github :repo "seagle0128/doom-modeline")
     :demand
-    :ensure t
     :init
     (doom-modeline-mode 1)
     :custom
     (doom-modeline-buffer-encoding nil))
-  (use-package hide-mode-line :demand t)
+  ;; (use-package hide-mode-line :demand t)
   (use-package nano-modeline
     :disabled
     :config
@@ -855,7 +857,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (add-hook 'org-agenda-mode-hook      #'nano-modeline-org-agenda-mode)
     )
 
-        #+end_src
+#+end_src
 ** Dirvish
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dirvish
@@ -918,12 +920,17 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   (when (or my-linux-p my-mac-p)
     (use-package multi-term)
     (use-package eat)
-    (use-package vterm)
+    (use-package vterm
+      :config
+      (setopt vterm-buffer-name-string "vterm/%s")
+      )
     (use-package multi-vterm)
     (use-package eshell-atuin
       :after eshell
       :demand t
       :bind (:map eshell-hist-mode-map ("M-r" . eshell-atuin-history))
+      :init
+      (require 'em-hist)
       :config
       (eshell-atuin-mode)
       (setq eshell-atuin-search-fields '(time duration command))
@@ -949,7 +956,153 @@ One alternative can be to have a separate script to copy the required passwords 
     :config
     (auth-source-1password-enable))
 #+end_src
-** Org and GTD
+** Org
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org
+    :ensure nil
+    :demand t
+    :hook (;; (elpaca-after-init . org-mode)
+           (org-capture-mode . delete-other-windows)
+           )
+    :bind
+    ("C-c i" . org-capture-inbox)
+    ("C-c j" . org-open-inbox)
+    ("C-c a" . org-agenda)
+    ("C-c l" . org-store-link)
+
+    :custom
+
+    ;; Visual and behavior changes
+    (org-support-shift-select t)
+    (org-ellipsis " ▼")
+
+    (org-agenda-start-with-log-mode t)
+    (org-agenda-window-setup 'only-window)
+
+    (org-startup-folded 'content)
+    (org-startup-indented t)
+    (org-startup-with-inline-images t)
+
+    :config
+
+    ;; Files
+    (setopt org-directory "~/ndxrd-uxxs3/org")
+    (setopt org-agenda-files (list "inbox.org" "calendar.org" "tickler.org"
+                                   "personal.org" "work.org"))
+
+    ;; Capture
+    (setopt org-capture-templates
+            `(("i" "Inbox" entry  (file "inbox.org") "* %?\n%U\n%i")
+              ("l" "Inbox [mail]" entry (file "inbox.org") "* %?\n%U\n%i\n%a")))
+
+    (defun org-capture-inbox ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-capture nil "i"))
+
+    (defun org-capture-mail ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-capture nil "l"))
+
+    (defun org-open-inbox ()
+      (interactive)
+      (find-file "~/ndxrd-uxxs3/org/inbox.org")
+      )
+
+    ;; Use full window for org-capture
+    (add-hook 'org-capture-mode-hook 'delete-other-windows)
+
+    ;; Refile
+    (setopt org-refile-use-outline-path t)
+    (setopt org-outline-path-complete-in-steps nil)
+    (setq org-refile-targets
+          '((("work.org" "personal.org") :maxlevel . 3)))
+
+    (setq org-refile-target-verify-function
+          (lambda ()
+            (let ((props (org-entry-properties)))
+              (or
+               ;; Allow level 1 headings with ORG_GTD property (Actions, Projects, Incubated)
+               (and (= (org-current-level) 1)
+                    (assoc "ORG_GTD" props))
+               ;; Allow level 2+ headings under Projects sections
+               (and (> (org-current-level) 1)
+                    (save-excursion
+                      (org-up-heading-safe)
+                      (string= "Projects" (cdr (assoc "ORG_GTD" (org-entry-properties))))))))))
+
+    (advice-add 'org-refile :after
+                (lambda (&rest _)
+                  (org-save-all-org-buffers)))
+
+    ;; Keywords and their workflows
+    (setopt org-todo-keywords
+            '((sequence "NEXT(n)" "TODO(t)" "WAIT(w@)" "|" "DONE(d)" "CNCL(c@)")))
+    (setopt org-log-done 'time)
+
+    ;; Tags
+    (setopt org-tag-persistent-alist '((:startgroup . nil)
+                                       ("@computer") ("@mail") ("@errands") ("@calls") ("@meetings")
+                                       (:endgroup . nil) (:startgroup . nil)
+                                       ("@tz-ist") ("@tz-est") ("@anytime")
+                                       (:endgroup . nil)
+                                       ("@fun") ("@agenda") ("@home") ("@anywhere")
+                                       ))
+
+    ;; Agenda
+    (setopt org-agenda-custom-commands
+            '(("g" "Get Things Done (GTD)"
+               ((agenda ""
+                        ((org-agenda-span 1)
+                         (org-deadline-warning-days 0)))
+                (todo "NEXT"
+                      ((org-agenda-skip-function
+                        '(org-agenda-skip-entry-if 'deadline))
+                       (org-agenda-prefix-format "    ")
+                       ;; (org-agenda-prefix-format "  [%5e] ")
+                       (org-agenda-overriding-header "\nNext Actions\n")))
+                (todo "WAIT"
+                      ((org-agenda-skip-function
+                        '(org-agenda-skip-entry-if 'deadline))
+                       (org-agenda-prefix-format "    ")
+                       (org-agenda-overriding-header "\nWaiting Fors\n")))
+                (search "*"
+                        ((org-agenda-prefix-format "  %?-12t% s")
+                         (org-agenda-files (list (expand-file-name "inbox.org" org-directory)))
+                         (org-agenda-overriding-header "\nInbox\n")))
+                (tags "CLOSED>=\"<today>\""
+                      ((org-agenda-overriding-header "\nCompleted today\n")))))))
+
+    ;; Clocking
+    (setopt org-clock-persist 'history)
+    (setopt org-log-into-drawer t)
+    (setopt org-log-done 'time)
+    (org-clock-persistence-insinuate)
+    (defun current-clock-time-to-file ()
+      (interactive)
+      (with-temp-file "~/.local/state/task"
+        (if (org-clocking-p)
+            (insert (org-clock-get-clock-string))
+          (insert "No Task"))))
+    (run-with-timer 1 60 'current-clock-time-to-file)
+    (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
+    (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    ;; TODO: Archival
+
+    )
+
+  (use-package org-protocol
+    :ensure nil
+    :after org
+    :demand t
+    :custom
+    (org-protocol-default-template-key "l")
+    )
+
+#+end_src
+** COMMENT Org and GTD (Old)
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
     :ensure nil
@@ -1104,13 +1257,6 @@ One alternative can be to have a separate script to copy the required passwords 
     (:map org-mode-map
           ("C-c ;" . nil))
     )
-  (use-package org-protocol
-    :ensure nil
-    :after org
-    :demand t
-    :custom
-    (org-protocol-default-template-key "l")
-    )
 #+END_SRC
 #+begin_src emacs-lisp :tangle "post-init.el"
   (defun my/org-gtd-maybe-set-tags ()
@@ -1194,7 +1340,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :after org
     :demand t
     :config
-    (setq khalel-import-org-file (expand-file-name "calendar.org" org-gtd-directory))
+    (setq khalel-import-org-file (expand-file-name "calendar.org" org-directory))
     (setq khalel-import-org-file-confirm-overwrite nil)
     (setq khalel-import-start-date "-3d")
     (setq khalel-import-end-date "+3d")
@@ -1226,8 +1372,8 @@ One alternative can be to have a separate script to copy the required passwords 
            (file-name (if marker
                           (buffer-file-name (marker-buffer marker))
                         (buffer-file-name)))
-           (calendar-file (expand-file-name "calendar.org" org-gtd-directory))
-           (inbox-file (expand-file-name "inbox.org" org-gtd-directory)))
+           (calendar-file (expand-file-name "calendar.org" org-directory))
+           (inbox-file (expand-file-name "inbox.org" org-directory)))
       (if (and file-name
                (string= file-name calendar-file))
           (save-excursion
@@ -1252,8 +1398,8 @@ One alternative can be to have a separate script to copy the required passwords 
   (defun my/complete-calendar-task ()
     "Copy current calendar task to inbox.org, add logbook entry, and mark done."
     (interactive)
-    (let* ((calendar-file (expand-file-name "calendar.org" org-gtd-directory))
-           (inbox-file (expand-file-name "inbox.org" org-gtd-directory))
+    (let* ((calendar-file (expand-file-name "calendar.org" org-directory))
+           (inbox-file (expand-file-name "inbox.org" org-directory))
            (marker (or (org-get-at-bol 'org-marker) (point-marker)))
            (source-file (if marker
                             (buffer-file-name (marker-buffer marker))
@@ -1470,7 +1616,7 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package howm
     :ensure t
     :defer t
-    :bind (("C-c ; ;" . howm-menu))
+    :bind (("C-c n ;" . howm-menu))
     :init
     (require 'howm-org)
     (setopt howm-directory "~/ndxrd-uxxs3/notes")
@@ -1801,7 +1947,8 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package pet
     :config
     (add-hook 'python-base-mode-hook 'pet-mode -10))
-  (use-package jupyter)
+  (use-package fish-mode)
+  (use-package jupyter :disabled)
 #+END_SRC
 ** Erlang & LSP
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2150,7 +2297,148 @@ One alternative can be to have a separate script to copy the required passwords 
     (setq smtpmail-queue-dir "~/Maildir/queue/cur")
     )
 #+end_src
-** Feeds
+** JIRA
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package jira
+    :if (not my-phone-p)
+    :ensure (:host github :repo "unmonoqueteclea/jira.el")
+    :config
+    ;; (with-eval-after-load "evil"
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gi"
+    ;;     (lambda () (interactive)
+    ;;       (jira-detail-show-issue (jira-utils-marked-item))))
+    ;;   (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
+    ;;   (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
+    ;;   )
+
+    (setq jira-base-url "https://work.greyorange.com/jira")
+    (setq jira-username "srijan.c@greyorange.com")
+    (setq jira-token-is-personal-access-token t)
+    (setq jira-api-version 2)
+    (setq jira-issues-table-fields
+          '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
+    (setq jira-debug nil)
+    (defun jira-api--token (host)
+      (auth-source-pick-first-password
+       :host "work.greyorange.com-jira" :user "credential"))
+    )
+
+#+end_src
+** Social and Browser
+*** EWW
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package eww
+    :ensure nil
+    :demand t)
+  (defcustom sj-browse-url-handlers `()
+    "Alist of (KEY REGEX-LIST . FUNCTION) pairs for URL handling.
+    KEY is a symbol identifying the handler.
+    REGEX-LIST is a list of regex patterns (strings) to match against URLs.
+    FUNCTION is called with the URL when any regex matches."
+    :type '(alist :key-type symbol
+                  :value-type (cons (repeat string) function))
+    :group 'sj-browse)
+
+  (defcustom sj-browse-url-default-handler 'eww-browse-url
+    "Default function to handle URLs when no regex matches."
+    :type 'function
+    :group 'sj-browse)
+
+  (defun sj-browse-url-set-handler (key regex-list handler)
+    "Set or update handler for KEY with REGEX-LIST and HANDLER function."
+    (setq sj-browse-url-handlers
+          (cons (cons key (cons regex-list handler))
+                (assq-delete-all key sj-browse-url-handlers))))
+
+  ;; Helper function to make rx usage cleaner
+  (defun sj-browse-url-set-handler-rx (key rx-patterns handler)
+    "Set handler for KEY with RX-PATTERNS (list of rx forms) and HANDLER function."
+    (sj-browse-url-set-handler key
+                               (mapcar (lambda (rx-form) (rx-to-string rx-form))
+                                       rx-patterns)
+                               handler))
+
+  (defun sj-browse-url (url &optional new-window)
+    "Browse URL using configured handlers or default handler."
+    (interactive (browse-url-interactive-arg "URL: "))
+    (let ((handler (or (cl-loop for (regex . func) in sj-browse-url-handlers
+                                when (string-match-p regex url)
+                                return func)
+                       sj-browse-url-default-handler)))
+      (funcall handler url new-window)))
+
+  (defun sj-browse-url (url &optional new-window)
+    "Browse URL using configured handlers or default handler."
+    (interactive (browse-url-interactive-arg "URL: "))
+    (let ((handler (or (cl-loop for (key regex-list . func) in sj-browse-url-handlers
+                                when (cl-some (lambda (regex)
+                                                (string-match-p regex url))
+                                              regex-list)
+                                return func)
+                       sj-browse-url-default-handler)))
+      (funcall handler url new-window)))
+
+
+  (setq browse-url-browser-function 'sj-browse-url)
+#+end_src
+*** Slack
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package slack
+    :if (not my-phone-p)
+    :ensure (:host github :repo "emacs-slack/emacs-slack")
+    :bind (("C-c s K" . slack-stop)
+           ("C-c s c" . slack-select-rooms)
+           ("C-c s u" . slack-select-unread-rooms)
+           ("C-c s U" . slack-user-select)
+           ("C-c s s" . slack-search-from-messages)
+           ("C-c s J" . slack-jump-to-browser)
+           ("C-c s j" . slack-jump-to-app)
+           ("C-c s e" . slack-insert-emoji)
+           ("C-c s E" . slack-message-edit)
+           ("C-c s r" . slack-message-add-reaction)
+           ("C-c s t" . slack-all-threads)
+           ("C-c s g" . slack-message-redisplay)
+           ("C-c s G" . slack-conversations-list-update-quick)
+           ("C-c s q" . slack-quote-and-reply)
+           ("C-c s Q" . slack-quote-and-reply-with-link)
+           (:map slack-mode-map
+                 (("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-thread-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)
+                  ("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)))
+           (:map slack-message-compose-buffer-mode-map
+                 (("C-c '" . slack-message-send-from-buffer)))
+           )
+    :config
+    (setq slack-prefer-current-team t)
+    (setq slack-enable-global-mode-string t)
+    (setq slack-buffer-function 'switch-to-buffer)
+    (setq slack-thread-also-send-to-room nil)
+    (slack-register-team
+     :name "greyorange"
+     :default t
+     :modeline-enabled t
+     :token (auth-source-pick-first-password
+             :host "work-slack-tokens"
+             :user "token")
+     :cookie (auth-source-pick-first-password
+              :host "work-slack-tokens"
+              :user "cookie"))
+    )
+  ;; (elpaca--configure-remotes (elpaca-get 'slack))
+  (use-package alert
+    :commands (alert)
+    :init
+    (require 'notifications)
+    (setq alert-default-style 'notifications))
+
+#+end_src
+*** Feeds
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package elfeed
     :custom
@@ -2160,19 +2448,19 @@ One alternative can be to have a separate script to copy the required passwords 
     (elfeed-set-timeout 36000)
 
     ;; Custom browse url for elfeed
-    (defun sj-browse-url(url &optional _)
-      "Try to open URL using mastodon-url-lookup, otherwise eww.
-       mastodon.el already opens non-mastodon URLs in the default browser.
-       So, we need to temporarily override the default browser.
-
-       Additionally, if running in elfeed-search-mode or elfeed-show-mode,
-       pass t in the 2nd argument of mastodon-url-lookup. This is for some
-       fedi-enabled sites that I follow that don't follow the standard
-       fediverse URL structure patterns (like my own site)."
-      (let ((browse-url-browser-function #'eww-browse-url))
-        (mastodon-url-lookup url (derived-mode-p 'elfeed-search-mode 'elfeed-show-mode))))
+    ;; (defun sj-browse-url(url &optional _)
+    ;;   "Try to open URL using mastodon-url-lookup, otherwise eww.
+    ;;    mastodon.el already opens non-mastodon URLs in the default browser.
+    ;;    So, we need to temporarily override the default browser.
+    ;;
+    ;;    Additionally, if running in elfeed-search-mode or elfeed-show-mode,
+    ;;    pass t in the 2nd argument of mastodon-url-lookup. This is for some
+    ;;    fedi-enabled sites that I follow that don't follow the standard
+    ;;    fediverse URL structure patterns (like my own site)."
+    ;;   (let ((browse-url-browser-function #'eww-browse-url))
+    ;;     (mastodon-url-lookup url (derived-mode-p 'elfeed-search-mode 'elfeed-show-mode))))
     ;; (setq browse-url-browser-function #'sj-browse-url)
-    (setq browse-url-browser-function #'browse-url-default-browser)
+    ;; (setq browse-url-browser-function #'browse-url-default-browser)
 
     (defun elfeed-protocol-fever-sync-unread-stat (host-url)
       "Set all entries in search view to read and fetch latest unread entries.
@@ -2290,91 +2578,18 @@ One alternative can be to have a separate script to copy the required passwords 
   ;;          do (elfeed-untag-1 entry 'unread))
 
 #+END_SRC
-** JIRA
+*** HackerNews
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package jira
-    :if (not my-phone-p)
-    :ensure (:host github :repo "unmonoqueteclea/jira.el")
+  (use-package hnreader
+    :demand t
     :config
-    ;; (with-eval-after-load "evil"
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gi"
-    ;;     (lambda () (interactive)
-    ;;       (jira-detail-show-issue (jira-utils-marked-item))))
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
-    ;;   (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
-    ;;   )
-    
-    (setq jira-base-url "https://work.greyorange.com/jira")
-    (setq jira-username "srijan.c@greyorange.com")
-    (setq jira-token-is-personal-access-token t)
-    (setq jira-api-version 2)
-    (setq jira-issues-table-fields
-          '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
-    (setq jira-debug nil)
-    (defun jira-api--token (host)
-      (auth-source-pick-first-password
-       :host "work.greyorange.com-jira" :user "credential"))
+    (sj-browse-url-set-handler-rx
+     'hn
+     '((seq line-start "https://" (or "news.ycombinator.com" "hnreader.com") "/item?id=" (one-or-more digit)))
+     (lambda (url &rest _) (hnreader-comment url)))
     )
-
 #+end_src
-** Slack
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package slack
-    :if (not my-phone-p)
-    :ensure (:host github :repo "emacs-slack/emacs-slack")
-    :bind (("C-c s K" . slack-stop)
-           ("C-c s c" . slack-select-rooms)
-           ("C-c s u" . slack-select-unread-rooms)
-           ("C-c s U" . slack-user-select)
-           ("C-c s s" . slack-search-from-messages)
-           ("C-c s J" . slack-jump-to-browser)
-           ("C-c s j" . slack-jump-to-app)
-           ("C-c s e" . slack-insert-emoji)
-           ("C-c s E" . slack-message-edit)
-           ("C-c s r" . slack-message-add-reaction)
-           ("C-c s t" . slack-all-threads)
-           ("C-c s g" . slack-message-redisplay)
-           ("C-c s G" . slack-conversations-list-update-quick)
-           ("C-c s q" . slack-quote-and-reply)
-           ("C-c s Q" . slack-quote-and-reply-with-link)
-           (:map slack-mode-map
-                 (("@" . slack-message-embed-mention)
-                  ("#" . slack-message-embed-channel)))
-           (:map slack-thread-message-buffer-mode-map
-                 (("C-c '" . slack-message-write-another-buffer)
-                  ("@" . slack-message-embed-mention)
-                  ("#" . slack-message-embed-channel)))
-           (:map slack-message-buffer-mode-map
-                 (("C-c '" . slack-message-write-another-buffer)))
-           (:map slack-message-compose-buffer-mode-map
-                 (("C-c '" . slack-message-send-from-buffer)))
-           )
-    :config
-    (setq slack-prefer-current-team t)
-    (setq slack-enable-global-mode-string t)
-    (setq slack-buffer-function 'switch-to-buffer)
-    (setq slack-thread-also-send-to-room nil)
-    (slack-register-team
-     :name "greyorange"
-     :default t
-     :modeline-enabled t
-     :token (auth-source-pick-first-password
-             :host "work-slack-tokens"
-             :user "token")
-     :cookie (auth-source-pick-first-password
-              :host "work-slack-tokens"
-              :user "cookie"))
-    )
-  ;; (elpaca--configure-remotes (elpaca-get 'slack))
-  (use-package alert
-    :commands (alert)
-    :init
-    (require 'notifications)
-    (setq alert-default-style 'notifications))
-
-#+end_src
-** Mastodon
+*** Mastodon
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package emojify
     :hook (after-init . global-emojify-mode))
@@ -2387,24 +2602,19 @@ One alternative can be to have a separate script to copy the required passwords 
           mastodon-active-user "srijan")
     )
 #+end_src
-** Reddit
+*** Reddit
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package md4rd
+    :demand t
     :config
     (defun md4rd-open-post (url &rest _args)
       (md4rd--fetch-comments (concat (string-replace "www" "old" url) ".json")))
+    (sj-browse-url-set-handler-rx
+     'reddit
+     '((seq line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
+     (lambda (url &optional _new-window)
+       (md4rd-open-post url)))
     )
-  (use-package eww
-    :ensure nil
-    :preface
-    (defvar apt-reddit-url-regex
-      (rx line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
-    (defun apt-open-reddit-if-url-matches ()
-      (when (string-match-p apt-reddit-url-regex (or (eww-current-url) ""))
-        (md4rd-open-post (eww-current-url))))
-    :hook ((eww-after-render-hook . apt-open-reddit-if-url-matches))
-    )
-
   #+end_src
 ** Desktop Utilities
 - A script to set the default browser on Linux:
