@@ -977,6 +977,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-ellipsis " ▼")
 
     (org-agenda-start-with-log-mode t)
+    (org-agenda-log-mode-items '(clock))
     (org-agenda-window-setup 'only-window)
 
     (org-startup-folded 'content)
