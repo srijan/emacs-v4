@@ -1072,7 +1072,8 @@ One alternative can be to have a separate script to copy the required passwords 
                          (org-agenda-files (list (expand-file-name "inbox.org" org-directory)))
                          (org-agenda-overriding-header "\nInbox\n")))
                 (tags "CLOSED>=\"<today>\""
-                      ((org-agenda-overriding-header "\nCompleted today\n")))))))
+                      ((org-agenda-prefix-format "    ")
+                       (org-agenda-overriding-header "\nCompleted today\n")))))))
 
     ;; Clocking
     (setopt org-clock-persist 'history)
@@ -1366,6 +1367,28 @@ One alternative can be to have a separate script to copy the required passwords 
            "You can use [[elisp:(khalel-run-vdirsyncer)][khalel-run-vdirsyncer]] to synchronize with remote calendars.\n\n"
            "Consider adding this file to your list of agenda files so that events show up there.\n\n")))
 
+  (defun my/org-calendar-html-to-text ()
+    "Convert HTML in the first line of the Description field to plain text using pandoc."
+    (interactive)
+    (save-excursion
+      (org-back-to-heading t)
+      (let ((end (save-excursion (org-end-of-subtree t t))))
+        (when (re-search-forward "^[[:space:]]*- Description: " end t)
+          (let ((first-line-start (point))
+                (first-line-end (line-end-position)))
+            (let ((first-line-content (buffer-substring-no-properties first-line-start first-line-end)))
+              (when (string-match-p "<[^>]+>" first-line-content)
+                (let ((plain-text (with-temp-buffer
+                                    (insert first-line-content)
+                                    (shell-command-on-region
+                                     (point-min) (point-max)
+                                     "pandoc -f html -t plain --wrap=none"
+                                     t t)
+                                    (string-trim (buffer-string)))))
+                  (delete-region first-line-start first-line-end)
+                  (insert plain-text)
+                  (message "Converted HTML to plain text in first line")))))))))
+
   (defun my/copy-calendar-task-to-inbox (orig-fun &rest args)
     "Copy task from calendar.org to inbox.org before clocking in"
     (let* ((marker (org-get-at-bol 'org-marker))
@@ -1386,6 +1409,7 @@ One alternative can be to have a separate script to copy the required passwords 
                 (let ((original-point (point-max)))
                   (goto-char original-point)
                   (insert "\n* " task-title "\n" task-body)
+                  (my/org-calendar-html-to-text)
                   (save-buffer)
                   (goto-char original-point)
                   (forward-line 1)
@@ -1483,6 +1507,8 @@ One alternative can be to have a separate script to copy the required passwords 
                   ;; Insert remaining content (the body after properties) with fixed When line
                   (when remaining-content-fixed
                     (insert remaining-content-fixed))
+
+                  (my/org-calendar-html-to-text)
                   
                   ;; Save the inbox file
                   (save-buffer)
@@ -1850,6 +1876,25 @@ One alternative can be to have a separate script to copy the required passwords 
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
 
+  (use-package claudemacs
+    :ensure (:host github :repo "cpoile/claudemacs")
+    :bind (
+           :map prog-mode-map
+           ("C-c C-e" . claudemacs-transient-menu)
+           :map text-mode-map
+           ("C-c C-e" . claudemacs-transient-menu)
+           )
+    :init
+    (add-to-list 'display-buffer-alist
+                 '("^\\*claudemacs"
+                   (display-buffer-in-side-window)
+                   (side . right)
+                   (window-width . 0.33)))
+    :config
+    (with-eval-after-load 'eat
+      (setq eat-term-scrollback-size 400000))
+    )
+
   (use-package gptel
     :if (not my-phone-p)
     :bind
@@ -1858,15 +1903,21 @@ One alternative can be to have a separate script to copy the required passwords 
     ("C-c g s" . gptel-send)
     ("C-c g m" . gptel-menu)
     ("C-c g r" . gptel-rewrite)
+    ("C-c g t" . gptel-tools)
     :config
     (setq
+     gptel-track-media t
+     gptel-default-mode #'org-mode
      gptel-model 'claude-sonnet-4-20250514
      gptel-backend (gptel-make-anthropic "Claude"
                      :stream t
                      :key (lambda ()
                             (auth-source-pick-first-password :host "api.anthropic.com" :user "credential"))
                      ))
+    (require 'gptel-plus)
     )
+  (use-package gptel-plus
+    :ensure (:host github :repo "benthamite/gptel-plus"))
   (use-package gptel-tool-library
     :if (not my-phone-p)
     :ensure (:host github :repo "aard-fi/gptel-tool-library")
@@ -1884,6 +1935,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
 
   (use-package copilot
+    :disabled
     :if (not my-phone-p)
     :diminish
     ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
@@ -2384,63 +2436,7 @@ One alternative can be to have a separate script to copy the required passwords 
       (funcall handler url new-window)))
 
 
-  (setq browse-url-browser-function 'sj-browse-url)
-#+end_src
-*** Slack
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package slack
-    :if (not my-phone-p)
-    :ensure (:host github :repo "emacs-slack/emacs-slack")
-    :bind (("C-c s K" . slack-stop)
-           ("C-c s c" . slack-select-rooms)
-           ("C-c s u" . slack-select-unread-rooms)
-           ("C-c s U" . slack-user-select)
-           ("C-c s s" . slack-search-from-messages)
-           ("C-c s J" . slack-jump-to-browser)
-           ("C-c s j" . slack-jump-to-app)
-           ("C-c s e" . slack-insert-emoji)
-           ("C-c s E" . slack-message-edit)
-           ("C-c s r" . slack-message-add-reaction)
-           ("C-c s t" . slack-all-threads)
-           ("C-c s g" . slack-message-redisplay)
-           ("C-c s G" . slack-conversations-list-update-quick)
-           ("C-c s q" . slack-quote-and-reply)
-           ("C-c s Q" . slack-quote-and-reply-with-link)
-           (:map slack-mode-map
-                 (("@" . slack-message-embed-mention)
-                  ("#" . slack-message-embed-channel)))
-           (:map slack-thread-message-buffer-mode-map
-                 (("C-c '" . slack-message-write-another-buffer)
-                  ("@" . slack-message-embed-mention)
-                  ("#" . slack-message-embed-channel)))
-           (:map slack-message-buffer-mode-map
-                 (("C-c '" . slack-message-write-another-buffer)))
-           (:map slack-message-compose-buffer-mode-map
-                 (("C-c '" . slack-message-send-from-buffer)))
-           )
-    :config
-    (setq slack-prefer-current-team t)
-    (setq slack-enable-global-mode-string t)
-    (setq slack-buffer-function 'switch-to-buffer)
-    (setq slack-thread-also-send-to-room nil)
-    (slack-register-team
-     :name "greyorange"
-     :default t
-     :modeline-enabled t
-     :token (auth-source-pick-first-password
-             :host "work-slack-tokens"
-             :user "token")
-     :cookie (auth-source-pick-first-password
-              :host "work-slack-tokens"
-              :user "cookie"))
-    )
-  ;; (elpaca--configure-remotes (elpaca-get 'slack))
-  (use-package alert
-    :commands (alert)
-    :init
-    (require 'notifications)
-    (setq alert-default-style 'notifications))
-
+  (setopt browse-url-browser-function 'sj-browse-url)
 #+end_src
 *** Feeds
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2450,21 +2446,6 @@ One alternative can be to have a separate script to copy the required passwords 
     (elfeed-log-level 'debug)
     :config
     (elfeed-set-timeout 36000)
-
-    ;; Custom browse url for elfeed
-    ;; (defun sj-browse-url(url &optional _)
-    ;;   "Try to open URL using mastodon-url-lookup, otherwise eww.
-    ;;    mastodon.el already opens non-mastodon URLs in the default browser.
-    ;;    So, we need to temporarily override the default browser.
-    ;;
-    ;;    Additionally, if running in elfeed-search-mode or elfeed-show-mode,
-    ;;    pass t in the 2nd argument of mastodon-url-lookup. This is for some
-    ;;    fedi-enabled sites that I follow that don't follow the standard
-    ;;    fediverse URL structure patterns (like my own site)."
-    ;;   (let ((browse-url-browser-function #'eww-browse-url))
-    ;;     (mastodon-url-lookup url (derived-mode-p 'elfeed-search-mode 'elfeed-show-mode))))
-    ;; (setq browse-url-browser-function #'sj-browse-url)
-    ;; (setq browse-url-browser-function #'browse-url-default-browser)
 
     (defun elfeed-protocol-fever-sync-unread-stat (host-url)
       "Set all entries in search view to read and fetch latest unread entries.
@@ -2557,31 +2538,67 @@ One alternative can be to have a separate script to copy the required passwords 
                               :password (lambda ()
                                           (auth-source-pick-first-password :host "miniflux.p.nwdr.io" :user "fever")))))
     (elfeed-protocol-enabled-protocols '(fever))
-    ;; (auth-source-search :host "miniflux.p.nwdr.io" :port "443" :user "emacs")
-    ;; (elfeed-protocol-log-trace t)
-    ;; (elfeed-protocol-fever-maxsize 10)
-    ;; (elfeed-protocol-newsblur-maxpages 1)
-    ;; (elfeed-protocol-owncloud-maxsize 10)
-    ;; (elfeed-protocol-ttrss-maxsize 10)
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
   (use-package elfeed-webkit :disabled)
 
-  ;; (elfeed-protocol-fever-get-update-mark "fever+https://srijan@miniflux.p.nwdr.io" 'update)
-
-  ;; (let* ((proto-id "fever+https://srijan@miniflux.p.nwdr.io")
-  ;;      (last-id (elfeed-protocol-fever-get-update-mark proto-id 'update)))
-  ;; (elfeed-protocol-fever-set-update-mark  proto-id 'update (- last-id 49252)))
-  ;; (setq my-elfeed-update-timer
-  ;;       (run-at-time 15 15
-  ;;                    (lambda () (when (= elfeed-curl-queue-active 0)
-  ;;                                 (elfeed-update)))))
-  ;; (cancel-timer my-elfeed-update-timer)
-
-  ;; (cl-loop for entry in (elfeed-search-selected)
-  ;;          do (elfeed-untag-1 entry 'unread))
-
 #+END_SRC
+*** Slack
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package slack
+    :if (not my-phone-p)
+    :ensure (:host github :repo "emacs-slack/emacs-slack")
+    :bind (("C-c s K" . slack-stop)
+           ("C-c s c" . slack-select-rooms)
+           ("C-c s u" . slack-select-unread-rooms)
+           ("C-c s U" . slack-user-select)
+           ("C-c s s" . slack-search-from-messages)
+           ("C-c s J" . slack-jump-to-browser)
+           ("C-c s j" . slack-jump-to-app)
+           ("C-c s e" . slack-insert-emoji)
+           ("C-c s E" . slack-message-edit)
+           ("C-c s r" . slack-message-add-reaction)
+           ("C-c s t" . slack-all-threads)
+           ("C-c s g" . slack-message-redisplay)
+           ("C-c s G" . slack-conversations-list-update-quick)
+           ("C-c s q" . slack-quote-and-reply)
+           ("C-c s Q" . slack-quote-and-reply-with-link)
+           (:map slack-mode-map
+                 (("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-thread-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)
+                  ("@" . slack-message-embed-mention)
+                  ("#" . slack-message-embed-channel)))
+           (:map slack-message-buffer-mode-map
+                 (("C-c '" . slack-message-write-another-buffer)))
+           (:map slack-message-compose-buffer-mode-map
+                 (("C-c '" . slack-message-send-from-buffer)))
+           )
+    :config
+    (setq slack-prefer-current-team t)
+    (setq slack-enable-global-mode-string t)
+    (setq slack-buffer-function 'switch-to-buffer)
+    (setq slack-thread-also-send-to-room nil)
+    (slack-register-team
+     :name "greyorange"
+     :default t
+     :modeline-enabled t
+     :token (auth-source-pick-first-password
+             :host "work-slack-tokens"
+             :user "token")
+     :cookie (auth-source-pick-first-password
+              :host "work-slack-tokens"
+              :user "cookie"))
+    )
+  ;; (elpaca--configure-remotes (elpaca-get 'slack))
+  (use-package alert
+    :commands (alert)
+    :init
+    (require 'notifications)
+    (setq alert-default-style 'notifications))
+
+#+end_src
 *** HackerNews
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package hnreader
@@ -2608,18 +2625,30 @@ One alternative can be to have a separate script to copy the required passwords 
 #+end_src
 *** Reddit
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package md4rd
+  (use-package reddigg
     :demand t
     :config
-    (defun md4rd-open-post (url &rest _args)
-      (md4rd--fetch-comments (concat (string-replace "www" "old" url) ".json")))
     (sj-browse-url-set-handler-rx
      'reddit
      '((seq line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
+     (lambda (url &rest _) (reddigg-view-comments url)))
+    ) 
+#+end_src
+*** GitHub
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package github-explorer
+    :commands (github-explorer-repo-from-url)
+    :init
+    ;; (github-explorer (github-explorer-repo-from-url "https://github.com/srijan/emacs-v4"))
+    (sj-browse-url-set-handler-rx
+     'github
+     '((seq line-start "http" (zero-or-one "s") "://github.com/" (one-or-more anychar)))
      (lambda (url &optional _new-window)
-       (md4rd-open-post url)))
+       (github-explorer (github-explorer-repo-from-url url))))
     )
-  #+end_src
+    
+#+end_src
+
 ** Desktop Utilities
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
