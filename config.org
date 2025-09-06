@@ -196,6 +196,7 @@ TODO: Need to evaluate how much speedup this gives
       :ensure t
       :demand t
       :config
+      (add-to-list 'exec-path-from-shell-variables "ANTHROPIC_API_KEY")
       (exec-path-from-shell-initialize))
     )
 #+end_src
@@ -288,7 +289,7 @@ TODO: Need to evaluate how much speedup this gives
 
   (setq save-interprogram-paste-before-kill t)
 
-  (setq global-visual-line-mode t)
+  (global-visual-line-mode 1)
 
 #+end_src
 ** Which-Key
@@ -320,7 +321,8 @@ TODO: Need to evaluate how much speedup this gives
   (when (not my-phone-p)
     ;; (add-to-list 'default-frame-alist '(height . 55))
     ;; (add-to-list 'default-frame-alist '(width . 160))
-    (scroll-bar-mode 1))
+    (scroll-bar-mode 1)
+    )
 #+end_src
 *** Mac
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -833,7 +835,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (doom-modeline-mode 1)
     :custom
     (doom-modeline-buffer-encoding nil))
-  ;; (use-package hide-mode-line :demand t)
+  ;; (use-package hide-mode-line :demand t) - replaced with built-in mode-line-invisible-mode (emacs 31)
   (use-package nano-modeline
     :disabled
     :config
@@ -1076,6 +1078,16 @@ One alternative can be to have a separate script to copy the required passwords 
                       ((org-agenda-prefix-format "    ")
                        (org-agenda-overriding-header "\nCompleted today\n")))))))
 
+    ;; Archival
+    (defun my/org-archive-location-func ()
+      "Custom function to define where to archive items."
+      (let* ((year (number-to-string (caddr (calendar-current-date))))
+             (full-org-directory (expand-file-name org-directory))
+             (filename (format "gtd_archive_%s" year))
+             (filepath (expand-file-name filename full-org-directory)))
+        (string-join `(,filepath "::" "datetree/"))))
+    (setopt org-archive-location (my/org-archive-location-func))
+
     ;; Clocking
     (setopt org-clock-persist 'history)
     (setopt org-log-into-drawer t)
@@ -1091,7 +1103,31 @@ One alternative can be to have a separate script to copy the required passwords 
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
 
-    ;; TODO: Archival
+    (when my-mac-p
+      (defun my/focus-clock-in ()
+        (let* ((task-name (org-get-heading t t t t))
+               (file-name (file-name-sans-extension (buffer-name)))
+               (profile (cond
+                         ((string= task-name "Break") "break")
+                         ((string= task-name "Reading") "break")
+                         (t (downcase file-name))))
+               (url (format "focus://focus?profile=%s" profile))
+               (cmd (format "open -g '%s'" url)))
+          (shell-command cmd)))
+
+      (defun my/focus-clock-out ()
+        (let* ((task-name (org-get-heading t t t t))
+               (file-name (file-name-sans-extension (buffer-name)))
+               (profile (cond
+                         ((string= task-name "Break") "break")
+                         ((string= task-name "Reading") "break")
+                         (t (downcase file-name))))
+               (url (format "focus://unfocus?profile=%s" profile))
+               (cmd (format "open -g '%s'" url)))
+          (shell-command cmd)))
+
+      (add-hook 'org-clock-in-hook #'my/focus-clock-in)
+      (add-hook 'org-clock-out-hook #'my/focus-clock-out))
 
     )
 
@@ -1102,6 +1138,13 @@ One alternative can be to have a separate script to copy the required passwords 
     :custom
     (org-protocol-default-template-key "l")
     )
+
+  (use-package org-edna
+    :demand t
+    :after org
+    :config
+    (setopt org-edna-use-inheritance t)
+    (org-edna-mode 1))
 
 #+end_src
 ** COMMENT Org and GTD (Old)
@@ -1145,98 +1188,6 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; (setq org-agenda-prefix-format '((agenda . " %i %-12:c%?-12t%-6e% s")))
     ;; So that we can jump back
     ;; (advice-add 'org-open-at-point :before #'evil-set-jump)
-
-    ;; Clock stuff
-    (org-clock-persistence-insinuate)
-    (defun current-clock-time-to-file ()
-      (interactive)
-      (with-temp-file "~/.local/state/task"
-        (if (org-clocking-p)
-            (insert (org-clock-get-clock-string))
-          (insert "No Task"))))
-    (run-with-timer 1 60 'current-clock-time-to-file)
-    (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
-    (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
-
-    ;; Skip duplicate entries in calendar main files
-    ;; (defun org-entry-exists-in-other-file-p ()
-    ;;   "Check if current entry exists in another agenda file.
-    ;;    Compares headline text and scheduled/deadline dates."
-    ;;   (let* ((current-file (buffer-file-name))
-    ;;          (headline (org-get-heading t t t t))
-    ;;          (scheduled (org-get-scheduled-time (point)))
-    ;;          (deadline (org-get-deadline-time (point)))
-    ;;          (other-files (remove current-file org-agenda-files)))
-    ;;
-    ;;     (catch 'found
-    ;;       (dolist (file other-files)
-    ;;         (when (file-exists-p file)
-    ;;           (with-current-buffer (find-file-noselect file)
-    ;;             (org-map-entries
-    ;;              (lambda ()
-    ;;                (when (and (string= headline (org-get-heading t t t t))
-    ;;                           (equal scheduled (org-get-scheduled-time (point)))
-    ;;                           (equal deadline (org-get-deadline-time (point))))
-    ;;                  (throw 'found t)))
-    ;;              nil 'file))))
-    ;;       nil)))
-
-    ;; (defun org-agenda-skip-duplicates-from-calendar ()
-    ;;   "Skip function to ignore entries from calendar.org if they exist elsewhere."
-    ;;   (when (and (buffer-file-name)
-    ;;              (string-match "calendar\\.org$" (buffer-file-name))
-    ;;              (org-entry-exists-in-other-file-p))
-    ;;     (org-end-of-subtree t)))
-
-    ;;(setq org-agenda-skip-function 'org-agenda-skip-duplicates-from-calendar)
-
-    (when my-mac-p
-      (defun my/focus-clock-in ()
-        (let* ((task-name (org-get-heading t t t t))
-               (file-name (file-name-sans-extension (buffer-name)))
-               (profile (cond
-                         ((string= task-name "Break") "break")
-                         ((string= task-name "Reading") "break")
-                         (t (downcase file-name))))
-               (url (format "focus://focus?profile=%s" profile))
-               (cmd (format "open -g '%s'" url)))
-          (shell-command cmd)))
-
-      (defun my/focus-clock-out ()
-        (let* ((task-name (org-get-heading t t t t))
-               (file-name (file-name-sans-extension (buffer-name)))
-               (profile (cond
-                         ((string= task-name "Break") "break")
-                         ((string= task-name "Reading") "break")
-                         (t (downcase file-name))))
-               (url (format "focus://unfocus?profile=%s" profile))
-               (cmd (format "open -g '%s'" url)))
-          (shell-command cmd)))
-
-      (add-hook 'org-clock-in-hook #'my/focus-clock-in)
-      (add-hook 'org-clock-out-hook #'my/focus-clock-out)
-
-      (defun my/session-clock-in ()
-        (let* ((task-name (org-get-heading t t t t))
-               (file-name (file-name-sans-extension (buffer-name)))
-               (effort-minutes (org-duration-to-minutes (or (org-entry-get nil "Effort") "0")))
-               (elapsed-minutes (/ (or (org-clock-sum) 0) 60))
-               (remaining-seconds (- (* effort-minutes 60) (* elapsed-minutes 60)))
-               (url (format "session:///start?intent=%s&categoryName=%s%s"
-                            (url-encode-url task-name)
-                            (url-encode-url file-name)
-                            (if (> remaining-seconds 120)
-                                (format "&duration=%d" remaining-seconds)
-                              "")))
-               (cmd (format "open -g '%s'" url)))
-          (shell-command cmd)))
-
-      (defun my/session-clock-out ()
-        (shell-command "open -g 'session:///finish'"))
-
-      ;; (add-hook 'org-clock-in-hook #'my/session-clock-in)
-      ;; (add-hook 'org-clock-out-hook #'my/session-clock-out)
-      )
 
     ;; Custom functions
     (defun org-capture-inbox ()
@@ -1564,8 +1515,8 @@ One alternative can be to have a separate script to copy the required passwords 
         (message "No active clock")))
 
     (defun org-agenda-gtd ()
-        (interactive)
-        (org-agenda nil "g"))
+      (interactive)
+      (org-agenda nil "g"))
 
     (setq tool-bar-map (make-sparse-keymap))
     (tool-bar-add-item "mail/inbox" 'org-open-inbox 'org-inbox-button
@@ -1796,12 +1747,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :bind
     (:map global-map
           ("M-0"       . treemacs-select-window)
-          ("C-x t 1"   . treemacs-delete-other-windows)
-          ("C-x t t"   . my-treemacs-toggle)
-          ("C-x t d"   . treemacs-select-directory)
-          ("C-x t B"   . treemacs-bookmark)
-          ("C-x t C-t" . treemacs-find-file)
-          ("C-x t M-t" . treemacs-find-tag))
+          ("C-x M-0"   . my-treemacs-toggle))
     )
   (use-package treemacs-evil
     :disabled
@@ -1816,6 +1762,15 @@ One alternative can be to have a separate script to copy the required passwords 
     :after (treemacs magit)
     :ensure t)
 #+end_src
+** Tramp
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (setopt remote-file-name-inhibit-locks t
+          tramp-use-scp-direct-remote-copying t
+          remote-file-name-inhibit-auto-save-visited t)
+  (setopt tramp-copy-size-limit (* 1024 1024) ;; 1MB
+          tramp-verbose 2)
+#+end_src
+
 ** COMMENT Workspaces - beframe
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package beframe
@@ -1860,6 +1815,54 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jinx)
 #+END_SRC
+** Presentations
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org-present
+    :demand t)
+  (use-package visual-fill-column
+    :demand t
+    :config
+    (setq visual-fill-column-width 30
+          visual-fill-column-center-text t))
+
+  (defun my/org-present-start ()
+    (org-present-big)
+    (org-display-inline-images)
+    ;; (org-present-hide-cursor)
+    ;; (org-present-read-only)
+    (setq header-line-format " ")
+    (mode-line-invisible-mode 1)
+    (scroll-bar-mode -1)
+    ;; Center the presentation and wrap lines
+    (visual-fill-column-mode 1)
+    (visual-line-mode 1))
+
+  (defun my/org-present-end ()
+    (org-present-small)
+    (org-remove-inline-images)
+    ;; (org-present-show-cursor)
+    ;; (org-present-read-write)
+    (setq header-line-format nil)
+    (mode-line-invisible-mode -1)
+    (scroll-bar-mode 1)
+    ;; Stop centering the document
+    (visual-fill-column-mode 0)
+    (visual-line-mode 0))
+
+  ;; Register hooks with org-present
+  (add-hook 'org-present-mode-hook 'my/org-present-start)
+  (add-hook 'org-present-mode-quit-hook 'my/org-present-end)
+
+  (defun my/org-present-prepare-slide (buffer-name heading)
+    ;; Show only top-level headlines
+    (org-overview)
+    ;; Unfold the current entry
+    (org-show-entry)
+    ;; Show only direct subheadings of the slide but don't expand them
+    (org-show-children))
+  ;; (add-hook 'org-present-after-navigate-functions 'my/org-present-prepare-slide)
+#+end_src
+
 ** Eglot
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package eglot
@@ -1877,6 +1880,16 @@ One alternative can be to have a separate script to copy the required passwords 
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
 
+  (use-package aidermacs
+    :bind (("C-c M-a" . aidermacs-transient-menu))
+    :custom
+    (aidermacs-default-chat-mode 'architect)
+    (aidermacs-default-model "sonnet")
+    (aidermacs-auto-commits nil)
+    (aidermacs-backend 'vterm)
+    (aidermacs-watch-files t)
+    )
+
   (use-package claudemacs
     :ensure (:host github :repo "cpoile/claudemacs")
     :bind (
@@ -1889,6 +1902,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (add-to-list 'display-buffer-alist
                  '("^\\*claudemacs"
                    (display-buffer-in-side-window)
+                   (mode-line-invisible-mode 1)
                    (side . right)
                    (window-width . 0.33)))
     :config
@@ -1915,6 +1929,8 @@ One alternative can be to have a separate script to copy the required passwords 
                      :key (lambda ()
                             (auth-source-pick-first-password :host "api.anthropic.com" :user "credential"))
                      ))
+    (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@srijan\n")
+    (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
     (require 'gptel-plus)
     )
   (use-package gptel-plus
@@ -1944,7 +1960,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :hook (prog-mode . (lambda ()
                          (interactive)
                          (unless (file-remote-p default-directory)
-            		         (copilot-mode))))
+              		     (copilot-mode))))
     :custom
     (copilot-max-char 1000000)
     :bind (
@@ -1988,7 +2004,10 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package edit-indirect)
   (use-package transient
     :ensure t)
-  (use-package magit)
+  (use-package magit
+    :bind ("C-x g" . magit-status)
+    :custom
+    (magit-git-executable "/opt/homebrew/bin/git"))
   (use-package json-mode)
   (use-package js
     :ensure nil
@@ -2006,6 +2025,12 @@ One alternative can be to have a separate script to copy the required passwords 
     (add-hook 'python-base-mode-hook 'pet-mode -10))
   (use-package fish-mode)
   (use-package jupyter :disabled)
+  (use-package edraw-org
+    :ensure (:host github :repo "misohena/el-easydraw")
+    :after org
+    :config
+    (edraw-org-setup-default))
+
 #+END_SRC
 ** Erlang & LSP
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2153,6 +2178,7 @@ One alternative can be to have a separate script to copy the required passwords 
      message-kill-buffer-on-exit t
      shr-color-visible-luminance-min 80
      mu4e-index-cleanup nil ;; set to nil if indexing is slow
+     mu4e-index-lazy-check t
      )
 
 
@@ -2354,21 +2380,29 @@ One alternative can be to have a separate script to copy the required passwords 
     (setq smtpmail-queue-dir "~/Maildir/queue/cur")
     )
 #+end_src
+** notmuch
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package notmuch
+    :disabled
+    :config
+    (setopt notmuch-search-oldest-first nil)
+    (setopt notmuch-saved-searches
+            '((:name "Inbox" :query "tag:inbox" :key "i")
+              (:name "Unread" :query "tag:unread" :key "u")
+              (:name "Sent" :query "tag:sent" :key "s")
+              (:name "Archive" :query "not tag:inbox" :key "a")
+              ;; Add saved searches for your other "folders"
+              (:name "Inbox GO" :query "tag:inbox AND tag:work" :key "w")
+              (:name "Inbox Personal" :query "tag:inbox AND -tag:work" :key "p")))
+    )
+#+end_src
+
 ** JIRA
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jira
     :if (not my-phone-p)
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
     :config
-    ;; (with-eval-after-load "evil"
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gs" 'jira-issues-menu)
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gi"
-    ;;     (lambda () (interactive)
-    ;;       (jira-detail-show-issue (jira-utils-marked-item))))
-    ;;   (evil-define-key 'normal jira-issues-mode-map "gc" 'jira-actions-change-issue-menu)
-    ;;   (evil-define-key 'normal jira-issues-mode-map "go" (lambda () (interactive) (jira-actions-open-issue (jira-utils-marked-item))))
-    ;;   )
-
     (setq jira-base-url "https://work.greyorange.com/jira")
     (setq jira-username "srijan.c@greyorange.com")
     (setq jira-token-is-personal-access-token t)
@@ -2382,8 +2416,15 @@ One alternative can be to have a separate script to copy the required passwords 
     )
 
 #+end_src
+** Document Reader
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package reader
+    :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
+    	             :files ("*.el" "render-core.so")
+    	             :pre-build ("make" "all")))
+#+end_src
 ** Social and Browser
-*** EWW
+*** EWW Browser
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package eww
     :ensure nil
@@ -2534,10 +2575,10 @@ One alternative can be to have a separate script to copy the required passwords 
     )
   (use-package elfeed-protocol
     :custom
-    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.p.nwdr.io"
-                              :api-url "https://miniflux.p.nwdr.io/fever/"
+    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.nwdr.io"
+                              :api-url "https://miniflux.nwdr.io/fever/"
                               :password (lambda ()
-                                          (auth-source-pick-first-password :host "miniflux.p.nwdr.io" :user "fever")))))
+                                          (auth-source-pick-first-password :host "miniflux.nwdr.io" :user "fever")))))
     (elfeed-protocol-enabled-protocols '(fever))
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
@@ -2649,7 +2690,6 @@ One alternative can be to have a separate script to copy the required passwords 
     )
     
 #+end_src
-
 ** Desktop Utilities
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2689,5 +2729,24 @@ One alternative can be to have a separate script to copy the required passwords 
     (hass-port 8123)
     (hass-insecure t)
     (hass-apikey (lambda () (auth-source-pick-first-password :host "HomeAssistant" :user "emacs-apikey")))
+    )
+#+end_src
+** COMMENT EAF
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package eaf
+    :ensure nil
+    :load-path "~/.emacs.d/site-lisp/emacs-application-framework"
+    :demand t
+    :custom
+    ;; See https://github.com/emacs-eaf/emacs-application-framework/wiki/Customization
+    (eaf-browser-continue-where-left-off t)
+    (eaf-browser-enable-adblocker t)
+    (browse-url-browser-function 'eaf-open-browser)
+    :config
+    ;; (defalias 'browse-web #'eaf-open-browser)
+    ;; (eaf-bind-key scroll_up "C-n" eaf-pdf-viewer-keybinding)
+    ;; (eaf-bind-key scroll_down "C-p" eaf-pdf-viewer-keybinding)
+    ;; (eaf-bind-key take_photo "p" eaf-camera-keybinding)
+    ;; (eaf-bind-key nil "M-q" eaf-browser-keybinding)
     )
 #+end_src
