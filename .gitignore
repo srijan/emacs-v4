@@ -3,3 +3,4 @@ pre-early-init.el
 post-early-init.el
 pre-init.el
 post-init.el
+.aider*
