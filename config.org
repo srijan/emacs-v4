@@ -2439,10 +2439,11 @@ One alternative can be to have a separate script to copy the required passwords 
 #+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package reader
-    :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
-    	             :files ("*.el" "render-core.so")
-    	             :pre-build ("make" "all")))
+  (when (not my-phone-p)
+    (use-package reader
+      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
+    	               :files ("*.el" "render-core.so")
+    	               :pre-build ("make" "all"))))
 #+end_src
 ** Social and Browser
 *** EWW Browser
