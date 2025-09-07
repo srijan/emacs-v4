@@ -187,6 +187,16 @@ TODO: Need to evaluate how much speedup this gives
   (setq user-full-name "Srijan Choudhary"
         user-mail-address "srijan4@gmail.com")
 #+END_SRC
+** Linux Specific
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when my-linux-p
+    (defun sj/insert-org-from-html-clipboard ()
+           (interactive)
+           (let* ((not-nil-and-not-a-buffer-means-current-buffer 1)
+                  (dst-buffer not-nil-and-not-a-buffer-means-current-buffer)
+                  (command "wl-paste --type text/html | pandoc -f html -t org"))
+             (shell-command command dst-buffer))))
+#+end_src
 ** Mac Specific
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
