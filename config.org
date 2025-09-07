@@ -1910,6 +1910,14 @@ One alternative can be to have a separate script to copy the required passwords 
       (setq eat-term-scrollback-size 400000))
     )
 
+  (use-package claude-code-ide
+    :ensure (:host github :repo "manzaltu/claude-code-ide.el")
+    :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
+    :custom
+    (claude-code-ide-terminal-backend 'eat)
+    :config
+    (claude-code-ide-emacs-tools-setup))
+
   (use-package gptel
     :if (not my-phone-p)
     :bind
