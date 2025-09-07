@@ -2025,7 +2025,10 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package magit
     :bind ("C-x g" . magit-status)
     :custom
-    (magit-git-executable "/opt/homebrew/bin/git"))
+    (magit-git-executable (cond
+                           (my-linux-p "/usr/bin/git")
+                           (my-mac-p "/opt/homebrew/bin/git")
+                           (t "git"))))
   (use-package json-mode)
   (use-package js
     :ensure nil
