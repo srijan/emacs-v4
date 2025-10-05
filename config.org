@@ -1897,7 +1897,10 @@ One alternative can be to have a separate script to copy the required passwords 
 #+end_src
 ** Dictionary and spelling
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package jinx)
+  (use-package jinx
+    :hook (text-mode . jinx-mode)
+    :bind ("M-$" . jinx-correct)
+    )
 #+END_SRC
 ** Presentations
 #+begin_src emacs-lisp :tangle "post-init.el"
