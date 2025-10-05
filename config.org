@@ -1694,10 +1694,18 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (advice-add 'howm-view-item-summary :filter-return 'my/howm-cut-title)
     )
+#+end_src
+*** Denote
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (setq my-notes-dir     (expand-file-name     "~/ndxrd-uxxs3/notes/"))
+  (setq my-journals-dir  (concat my-notes-dir  "journals"))
+  (setq my-zettels-dir   (concat my-notes-dir  "main"))
+  (setq my-templates-dir (concat my-notes-dir  "templates"))
+
   (use-package denote
     ;; :demand
     :custom
-    (denote-directory (expand-file-name "~/ndxrd-uxxs3/notes/"))
+    (denote-directory my-notes-dir)
     (denote-known-keywords '("emacs" "philosophy" "politics" "economics"))
     (denote-file-type 'org) ;; or 'markdown-yaml
     (denote-infer-keywords t)
@@ -1705,10 +1713,11 @@ One alternative can be to have a separate script to copy the required passwords 
     (denote-date-prompt-use-org-read-date t)
     (denote-backlinks-show-context t)
     (denote-rename-buffer-mode t)
+    (denote-prompts '(title keywords))
     (denote-templates
      `((weekly-review . ,(f-read (expand-file-name
-                                  "templates/weekly-review.md"
-                                  denote-directory)))
+                                  "weekly-review.md"
+                                  my-templates-dir)))
        (journal . "")))
     :config
     (defun my-weekly-review-journal ()
@@ -1718,7 +1727,7 @@ One alternative can be to have a separate script to copy the required passwords 
          exist, prompt with completion for a choice between them.
          Else create a new file."
       (interactive)
-      (let* ((denote-directory (concat denote-directory "journals/"))
+      (let* ((denote-directory my-journals-dir)
              ;; Year corresponding to ISO week + ISO week
              (week (format-time-string "%G W%V"))
              (string (denote-sluggify 'title week))
@@ -1731,21 +1740,37 @@ One alternative can be to have a separate script to copy the required passwords 
           (find-file (car files)))
          (t
           (denote week '("weeklyreview") nil nil nil 'weekly-review)))))
+    (defun my/denote-zettel ()
+      "Create a permanent Zettelkasten note with Folgezettel ID."
+      (interactive)
+      (let ((denote-directory my-zettels-dir))
+        (call-interactively #'denote-sequence)))    
     :hook (dired-mode . denote-dired-mode)
     :bind
     ("C-c n n" . denote)
-    ("C-c n d" . (lambda () (interactive) (dired denote-directory)))
+    ("C-c n N" . my/denote-zettel)
+    ("C-c n d" . (lambda () (interactive) (dired my-notes-dir)))
     ("C-c n r" . my-weekly-review-journal)
     )
   (use-package denote-journal
     :after denote
     :custom
-    (denote-journal-directory (expand-file-name "~/ndxrd-uxxs3/notes/journals/"))
+    (denote-journal-directory my-journals-dir)
     (denote-journal-title-format 'day-date-month-year)
+    :config
+    (require 'denote)
     :bind
     ("C-c n j" . denote-journal-new-or-existing-entry)
     )
   (use-package denote-menu
+    :after denote)
+  (use-package denote-sequence
+    :after denote
+    :config
+    (require 'denote)
+    :custom
+    (denote-sequence-scheme 'alphanumeric))
+  (use-package denote-org
     :after denote)
   (use-package consult-notes
     :after denote
@@ -1757,6 +1782,10 @@ One alternative can be to have a separate script to copy the required passwords 
     ("C-c n f" . consult-notes)
     ("C-c n s" . consult-notes-search-in-all-notes)
     )
+
+    #+end_src
+*** Literature Notes
+#+begin_src emacs-lisp :tangle "post-init.el"
 
 #+end_src
 ** Ediff
