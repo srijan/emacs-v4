@@ -130,7 +130,6 @@ This file has the config that has to be loaded before the rest of the minimal-em
 #+end_src
 
 * post-init
-
 ** Header
 This will generate a header at the top of the tangled file to indicate it is generated and is not meant to be modified directly.
 
@@ -2089,16 +2088,13 @@ One alternative can be to have a separate script to copy the required passwords 
     (use-package sql-indent)
     (use-package xmind-org))
 #+END_SRC
-** Language Modes
+** Git
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (editorconfig-mode 1)
-  (use-package markdown-mode
-    :mode ("README\\.md\\'" . gfm-mode)
-    :init (setq markdown-command '("pandoc" "--from=markdown" "--to=html5"))
-    )
-  (use-package edit-indirect)
-  (use-package transient
-    :ensure t)
+  (use-package project
+    :ensure nil
+    :config
+    (setopt project-vc-extra-root-markers '(".project")))
+  (use-package transient)
   (use-package magit
     :bind ("C-x g" . magit-status)
     :custom
@@ -2106,6 +2102,16 @@ One alternative can be to have a separate script to copy the required passwords 
                            (my-linux-p "/usr/bin/git")
                            (my-mac-p "/opt/homebrew/bin/git")
                            (t "git"))))
+#+end_src
+** Language Modes
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (editorconfig-mode 1)
+  (use-package markdown-mode
+    :mode ("README\\.md\\'" . gfm-mode)
+    :init (setq markdown-command '("pandoc" "--from=markdown" "--to=html5"))
+    :bind (:map markdown-mode-map
+           ("M-n" . nil)))
+  (use-package edit-indirect)
   (use-package json-mode)
   (use-package js
     :ensure nil
@@ -2500,6 +2506,7 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package jira
     :if (not my-phone-p)
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
+    :demand t
     :config
     (setq jira-base-url "https://work.greyorange.com/jira")
     (setq jira-username "srijan.c@greyorange.com")
@@ -2516,7 +2523,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (when (not my-phone-p)
+  (when my-linux-p
     (use-package reader
       :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
     	               :files ("*.el" "render-core.so")
