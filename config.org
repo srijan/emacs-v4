@@ -191,15 +191,20 @@ TODO: Need to evaluate how much speedup this gives
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
     (defun sj/insert-org-from-html-clipboard ()
-           (interactive)
-           (let* ((not-nil-and-not-a-buffer-means-current-buffer 1)
-                  (dst-buffer not-nil-and-not-a-buffer-means-current-buffer)
-                  (command "wl-paste --type text/html | pandoc -f html -t org"))
-             (shell-command command dst-buffer))))
+      (interactive)
+      (let* ((not-nil-and-not-a-buffer-means-current-buffer 1)
+             (dst-buffer not-nil-and-not-a-buffer-means-current-buffer)
+             (command "wl-paste --type text/html | pandoc -f html -t org"))
+        (shell-command command dst-buffer))))
 #+end_src
 ** Mac Specific
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
+    ;; Swap Alt (Option) and Super (Command) keys
+    ;; (setq mac-option-modifier 'super)        ; Left Option key becomes Super
+    ;; (setq mac-command-modifier 'meta)        ; Command key becomes Meta (Alt)
+    ;; (setq mac-right-option-modifier 'none)   ; Right Option for special characters
+
     (setq insert-directory-program "/opt/homebrew/bin/gls")
 
     (use-package exec-path-from-shell
@@ -332,21 +337,76 @@ TODO: Need to evaluate how much speedup this gives
     ;; (add-to-list 'default-frame-alist '(height . 55))
     ;; (add-to-list 'default-frame-alist '(width . 160))
     (scroll-bar-mode 1)
+    (display-time-mode -1)
+    (use-package ef-themes
+      :if (display-graphic-p)
+      :disabled
+      :custom
+      (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
+      (ef-themes-headings
+       '((0 . (variable-pitch semibold 1.2))
+         (1 . (variable-pitch semibold 1.1))
+         (agenda-date . (variable-pitch 1.2))
+         (agenda-structure . (variable-pitch 1.4))
+         (t . (variable-pitch))
+         ))
+      (ef-themes-mixed-fonts t)
+      (ef-themes-variable-pitch-ui t)
+      ;; :hook ((ef-themes-post-load . my-ef-themes-mode-line))
+      ;; (ef-themes-post-load . fontaine-apply-current-preset)
+      :config
+      (defun my-ef-themes-mode-line ()
+        "Tweak the style of the mode lines."
+        (ef-themes-with-colors
+          (custom-set-faces
+           `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+           `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+      :init
+      ;; (ef-themes-select 'ef-maris-dark)
+      )
     )
 #+end_src
 *** Mac
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
-    (defun my/mac-apply-theme (appearance)
-      "Load theme, taking current system APPEARANCE into consideration."
-      (mapc #'disable-theme custom-enabled-themes)
-      ;; (set-frame-font "Aporetic Sans Mono-15" nil t)
-      (set-face-font 'default "IBM Plex Mono-15")
-      ;; (set-face-font 'variable-pitch "Inter-15")
-      (pcase appearance
-        ('light (load-theme 'modus-operandi-tinted t))
-        ('dark (load-theme 'modus-vivendi-tinted t))))
-    (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+    ;; (use-package nano-theme
+    ;;   :demand t)
+
+    (use-package modus-themes
+      :ensure t
+      :demand t
+      :config
+      ;; (require-theme 'modus-themes)
+      (setq modus-themes-variable-pitch-ui t
+            modus-themes-common-palette-overrides
+            '((fringe unspecified)
+              (bg-tab-bar bg-main)
+              (bg-tab-current bg-cyan-intense)
+              (bg-tab-other bg-inactive)
+              ))    
+      ;; (((border-mode-line-active unspecified)
+      ;;   (border-mode-line-inactive unspecified)))
+
+      (defun my/custom-faces (&rest _)
+        (custom-set-faces
+         '(region ((t :extend nil))))      
+        ;; (set-face-font 'default "IBM Plex Mono-16")
+        ;; (set-face-font 'default "Aporetic Sans Mono-17")
+        ;; (set-face-font 'variable-pitch "Inter-15")
+        ;; (set-face-font 'default "Berkeley Mono-15")
+        (set-face-attribute 'default nil :family "Berkeley Mono" :height 150 :weight 'semilight)
+        (set-face-attribute 'bold nil :weight 'regular)
+        )
+      (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
+      
+      (defun my/mac-apply-theme (appearance)
+        "Load theme, taking current system APPEARANCE into consideration."
+        (pcase appearance
+          ('light (modus-themes-load-theme 'modus-operandi-tinted))
+          ('dark (modus-themes-load-theme 'modus-vivendi-tinted))))
+
+      (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+      )
 
     (setopt ns-use-srgb-colorspace nil)
     (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
@@ -402,35 +462,8 @@ TODO: Need to evaluate how much speedup this gives
     :bind (("C-c e" . emoji-search))
     )
 
-  (use-package ef-themes
-    :if (display-graphic-p)
-    :disabled
-    :custom
-    (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
-    (ef-themes-headings
-     '((0 . (variable-pitch semibold 1.2))
-       (1 . (variable-pitch semibold 1.1))
-       (agenda-date . (variable-pitch 1.2))
-       (agenda-structure . (variable-pitch 1.4))
-       (t . (variable-pitch))
-       ))
-    (ef-themes-mixed-fonts t)
-    (ef-themes-variable-pitch-ui t)
-    :hook ((ef-themes-post-load . my-ef-themes-mode-line))
-    ;; (ef-themes-post-load . fontaine-apply-current-preset)
-    :config
-    (defun my-ef-themes-mode-line ()
-      "Tweak the style of the mode lines."
-      (ef-themes-with-colors
-       (custom-set-faces
-        `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
-        `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
-    :init
-    (ef-themes-select 'ef-duo-dark)
-    )
   (use-package olivetti
-    :disabled
-    :bind (("C-c =" . olivetti-mode))
+    :bind (("C-c C-=" . olivetti-mode))
     :custom
     (olivetti-style 'fancy)
     ;; (olivetti-fringe '(:background "#e5e5e5"))
@@ -438,7 +471,18 @@ TODO: Need to evaluate how much speedup this gives
   (use-package spacious-padding
     :demand t
     :config
-    (spacious-padding-mode 1))
+    (setq spacious-padding-subtle-frame-lines 
+          '(:mode-line-active error))
+    (setq spacious-padding-widths
+          '( :internal-border-width 15
+             :header-line-width 2
+             :mode-line-width 6
+             :tab-width 4
+             :right-divider-width 15
+             :scroll-bar-width 8
+             :fringe-width 8))
+    (spacious-padding-mode 1)
+    )
 #+end_src
 ** Tool Bar
 I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
@@ -594,7 +638,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
            ("C-c h" . consult-history)
            ("C-c k" . consult-kmacro)
            ("C-c M" . consult-man)
-           ;; ("C-c i" . consult-info)
+           ("C-c I" . consult-info)
            ([remap Info-search] . consult-info)
            ;; C-x bindings in `ctl-x-map'
            ("C-x M-:" . consult-complex-command)
@@ -844,7 +888,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :init
     (doom-modeline-mode 1)
     :custom
-    (doom-modeline-buffer-encoding nil))
+    (doom-modeline-buffer-encoding nil)
+    (doom-modeline-time-icon nil))
   ;; (use-package hide-mode-line :demand t) - replaced with built-in mode-line-invisible-mode (emacs 31)
   (use-package nano-modeline
     :disabled
@@ -1010,7 +1055,6 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (defun org-capture-inbox ()
       (interactive)
-      (call-interactively 'org-store-link)
       (org-capture nil "i"))
 
     (defun org-capture-mail ()
@@ -1604,6 +1648,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
 #+END_SRC
 ** Notes
+*** COMMENT Howm
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package howm
     :ensure t
@@ -1617,7 +1662,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (setopt howm-view-title-header "#+title:")
 
     :config
-    (add-hook 'howm-mode-hook #'tab-line-mode)
+    ;; (add-hook 'howm-mode-hook #'tab-line-mode)
     ;; In case you don't always use Org-mode files, the following lines
     ;; ensure that Denote's title format for plain-text and Markdown files
     ;; will also be recognized.
