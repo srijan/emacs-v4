@@ -2043,7 +2043,8 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure (:host github :repo "manzaltu/claude-code-ide.el")
     :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
     :custom
-    (claude-code-ide-terminal-backend 'eat)
+    (claude-code-ide-terminal-backend 'vterm)
+    (claude-code-ide-use-ide-diff nil)
     :config
     (claude-code-ide-emacs-tools-setup))
 
@@ -2069,6 +2070,19 @@ One alternative can be to have a separate script to copy the required passwords 
     (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@srijan\n")
     (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
     (require 'gptel-plus)
+    )
+  (use-package acp
+    :ensure (:host github :repo "xenodium/acp.el")
+    :demand t
+    )
+  (use-package shell-maker
+    :demand t)
+  (use-package agent-shell
+    :ensure (:host github :repo "xenodium/agent-shell")
+    :demand t
+    :config
+    (setq agent-shell-anthropic-authentication
+          (agent-shell-anthropic-make-authentication :login t))
     )
   (use-package gptel-plus
     :ensure (:host github :repo "benthamite/gptel-plus"))
