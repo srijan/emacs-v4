@@ -137,6 +137,11 @@ This will generate a header at the top of the tangled file to indicate it is gen
   ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
   ;; This file has been generated from config.org file. DO NOT EDIT.
 #+end_src
+** Load my custom libraries
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (add-to-list 'load-path (expand-file-name "srijan-lisp" minimal-emacs-user-directory))
+#+end_src
+
 ** System information
 #+begin_src emacs-lisp :tangle "post-init.el"
   (defvar my-linux-p (equal (system-name) "GGN001944"))
@@ -1705,7 +1710,7 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; :demand
     :custom
     (denote-directory my-notes-dir)
-    (denote-known-keywords '("emacs" "philosophy" "politics" "economics"))
+    (denote-known-keywords '("emacs" "programming" "architecture"))
     (denote-file-type 'org) ;; or 'markdown-yaml
     (denote-infer-keywords t)
     (denote-sort-keywords t)
@@ -1782,9 +1787,47 @@ One alternative can be to have a separate script to copy the required passwords 
     ("C-c n s" . consult-notes-search-in-all-notes)
     )
 
-    #+end_src
+#+end_src
 *** Literature Notes
 #+begin_src emacs-lisp :tangle "post-init.el"
+  ;; KOReader configuration
+  (require 'koreader-json-to-org)
+  (setq my-koreader-export-dir  (expand-file-name "~/ndxrd-uxxs3/Documents/koreader/clipboard/"))
+  (setq my-koreader-output-dir  (concat my-notes-dir "reference/"))
+
+  (defun my/koreader-import-all (&optional skip-sync)
+    "Import all unprocessed KOReader JSON files from export directory.
+  First syncs files from KOReader device via SCP, then processes JSON files
+  from `my-koreader-export-dir' and creates org files in `my-koreader-output-dir'.
+  Skips files that have already been processed based on their export timestamp.
+
+  With prefix argument (C-u), skip the SCP sync step.
+
+  Uses `koreader-use-denote' and other koreader-* customization variables
+  to control output format and behavior."
+    (interactive "P")
+    (require 'koreader-json-to-org)
+
+    ;; Sync files from KOReader device (unless skipped)
+    (unless skip-sync
+      (message "Syncing files from KOReader device...")
+      (let* ((scp-command "scp -r -P 2222 root@192.168.4.30:/mnt/us/koreader/clipboard/ ~/ndxrd-uxxs3/Documents/koreader/")
+             (exit-code (shell-command scp-command)))
+        (unless (zerop exit-code)
+          (user-error "Failed to sync files from KOReader device (exit code: %d)" exit-code))))
+
+    (unless (file-directory-p my-koreader-export-dir)
+      (user-error "KOReader export directory does not exist: %s" my-koreader-export-dir))
+    (unless (file-directory-p my-koreader-output-dir)
+      (make-directory my-koreader-output-dir t))
+    (let ((results (koreader-process-json-directory
+                    my-koreader-export-dir
+                    my-koreader-output-dir)))
+      (message "KOReader import complete: %d books processed, %d skipped, %d new highlights, %d existing"
+               (plist-get results :files-processed)
+               (plist-get results :files-skipped)
+               (plist-get results :total-new)
+               (plist-get results :total-skipped))))
 
 #+end_src
 ** Ediff
@@ -2856,3 +2899,501 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; (eaf-bind-key nil "M-q" eaf-browser-keybinding)
     )
 #+end_src
+* Custom Libraries
+** Koreader json to org
+#+begin_src emacs-lisp :tangle "srijan-lisp/koreader-json-to-org.el"
+  ;;; koreader-json-to-org.el --- Convert KOReader JSON highlights to Org mode -*- lexical-binding: t; -*-
+
+  (require 'json)
+  (require 'org)
+
+  ;;; Customization
+
+  (defgroup koreader-json-to-org nil
+    "Convert KOReader JSON highlights to Org mode.
+
+  This package converts KOReader JSON export files into Org mode format,
+  supporting both Denote-style filenames and plain filenames.
+
+  Example configuration:
+    (setq koreader-use-denote t)
+    (setq koreader-denote-tag \"reading\")
+    (setq koreader-add-entry-tags t)
+    (setq koreader-plain-filename-template \"[%a] %t.org\")
+
+  Use `M-x customize-group RET koreader-json-to-org' to customize."
+    :group 'org
+    :prefix "koreader-")
+
+  (defcustom koreader-use-denote t
+    "Whether to use Denote format for output filenames.
+  When non-nil, generates filenames like: TIMESTAMP--title-author__books.org
+  When nil, generates filenames like: Title - Author.org"
+    :type 'boolean
+    :group 'koreader-json-to-org)
+
+  (defcustom koreader-denote-tag "books"
+    "Tag to use for Denote-formatted files.
+  Only used when `koreader-use-denote' is non-nil."
+    :type 'string
+    :group 'koreader-json-to-org)
+
+  (defcustom koreader-add-entry-tags t
+    "Whether to add tags to highlight and note entries.
+  When non-nil, entries get :highlight: or :note: tags."
+    :type 'boolean
+    :group 'koreader-json-to-org)
+
+  (defcustom koreader-highlight-tag "highlight"
+    "Tag name for highlight entries.
+  Only used when `koreader-add-entry-tags' is non-nil."
+    :type 'string
+    :group 'koreader-json-to-org)
+
+  (defcustom koreader-note-tag "note"
+    "Tag name for note entries.
+  Only used when `koreader-add-entry-tags' is non-nil."
+    :type 'string
+    :group 'koreader-json-to-org)
+
+  (defcustom koreader-plain-filename-template "%t - %a.org"
+    "Template for plain (non-Denote) filenames.
+  Available placeholders:
+    %t - Book title
+    %a - Book author
+  Only used when `koreader-use-denote' is nil."
+    :type 'string
+    :group 'koreader-json-to-org)
+
+  (defvar koreader-debug-logging nil
+    "Enable debug logging for KOReader JSON processing.
+  When non-nil, prints detailed information about file processing.")
+
+  (defun koreader-timestamp-to-human-readable (timestamp)
+    "Convert Unix TIMESTAMP to human-readable format."
+    (format-time-string "%Y-%m-%d %H:%M:%S" (seconds-to-time timestamp)))
+
+  (defun koreader-slugify (text)
+    "Convert TEXT to a dash-separated slug for denote filename."
+    (let* ((slug (downcase text))
+           ;; Replace spaces and special characters with dashes
+           (slug (replace-regexp-in-string "[^a-z0-9]+" "-" slug))
+           ;; Remove leading/trailing dashes
+           (slug (replace-regexp-in-string "^-+\\|-+$" "" slug)))
+      slug))
+
+  (defun koreader-find-existing-org-file (directory title author)
+    "Find existing org file in DIRECTORY matching TITLE and AUTHOR.
+  Returns the full path if found, nil otherwise."
+    (let* ((title-slug (koreader-slugify title))
+           (author-slug (koreader-slugify author))
+           (pattern (concat "--" title-slug "-" author-slug "__books\\.org$"))
+           (files (directory-files directory t pattern)))
+      (when files
+        (car files))))
+
+  (defun koreader-generate-denote-filename (directory title author &optional timestamp)
+    "Generate a denote-formatted filename for the org file.
+  If a file with matching title and author exists, return that filename.
+  Otherwise, generate a new one with TIMESTAMP (or current time if nil)."
+    (let ((existing-file (koreader-find-existing-org-file directory title author)))
+      (if existing-file
+          existing-file
+        (let* ((timestamp (or timestamp (format-time-string "%Y%m%dT%H%M%S")))
+               (title-slug (koreader-slugify title))
+               (author-slug (koreader-slugify author))
+               (filename (concat timestamp "--" title-slug "-" author-slug "__books.org")))
+          (expand-file-name filename directory)))))
+
+  (defun koreader-generate-plain-filename (directory title author)
+    "Generate a plain org filename using `koreader-plain-filename-template'.
+  If a file with matching title and author exists, return that filename.
+  Otherwise, generate a new one."
+    (let* ((filename (replace-regexp-in-string
+                      "%t" title
+                      (replace-regexp-in-string
+                       "%a" author
+                       koreader-plain-filename-template)))
+           (full-path (expand-file-name filename directory)))
+      ;; Check if file already exists
+      (if (file-exists-p full-path)
+          full-path
+        ;; Otherwise search for similar files using the template pattern
+        (let* ((pattern (replace-regexp-in-string
+                         "%t" (regexp-quote title)
+                         (replace-regexp-in-string
+                          "%a" (regexp-quote author)
+                          (regexp-quote koreader-plain-filename-template))))
+               (pattern (concat "^" pattern "$")))
+          (or (car (directory-files directory t pattern t))
+              full-path)))))
+
+  (defun koreader-get-export-time-from-org (org-file)
+    "Extract KOREADER_EXPORT_TIME property from ORG-FILE.
+  Returns the export time as a number, or nil if not found."
+    (when (file-exists-p org-file)
+      (with-temp-buffer
+        (insert-file-contents org-file)
+        (org-mode)
+        (goto-char (point-min))
+        ;; Search for the property
+        (when (re-search-forward "^:KOREADER_EXPORT_TIME:\\s-+\\([0-9]+\\)" nil t)
+          (string-to-number (match-string 1))))))
+
+  (defun koreader-get-processed-exports (directory)
+    "Scan DIRECTORY for org files and return list of processed export times.
+  Returns a list of numbers representing KOREADER_EXPORT_TIME values."
+    (let ((org-files (directory-files directory t "\\.org$"))
+          (export-times '()))
+      (dolist (file org-files)
+        (let ((export-time (koreader-get-export-time-from-org file)))
+          (when export-time
+            (push export-time export-times))))
+      export-times))
+
+  (defun koreader-get-json-metadata (json-file)
+    "Extract metadata from JSON-FILE without full processing.
+  Returns a plist with :title, :author, :created-at, :file, and :json-data.
+  The :json-data can be reused to avoid re-reading the file."
+    (let* ((json-data (json-read-file json-file))
+           (title (alist-get 'title json-data))
+           (author (alist-get 'author json-data))
+           (created-at (or (alist-get 'created_on json-data) 0)))
+      (list :title title
+            :author author
+            :created-at created-at
+            :file json-file
+            :json-data json-data)))
+
+  (defun koreader-json-needs-processing-p (metadata processed-exports)
+    "Check if file in METADATA needs processing.
+  METADATA is a plist with :created-at field.
+  PROCESSED-EXPORTS is a list of already-processed export times.
+  Returns t if the file needs processing, nil otherwise."
+    (let ((created-at (plist-get metadata :created-at)))
+      (if (and created-at (> created-at 0))
+          (not (member created-at processed-exports))
+        ;; If no created_on field, always process
+        t)))
+
+  (defun koreader-add-merge-history (org-file json-file new-count skipped-count)
+    "Add merge history entry to ORG-FILE's KOREADER_HISTORY drawer.
+  Records timestamp, JSON-FILE basename, NEW-COUNT highlights added, and SKIPPED-COUNT existing."
+    (when (file-exists-p org-file)
+      (with-temp-buffer
+        (insert-file-contents org-file)
+        (org-mode)
+        (goto-char (point-min))
+
+        ;; Find or create the history drawer
+        (let ((history-start nil)
+              (json-basename (file-name-nondirectory json-file))
+              (history-entry (format "- [%s] %s: Imported %d new highlights, %d skipped\n"
+                                     (format-time-string "%Y-%m-%d %a %H:%M")
+                                     (file-name-nondirectory json-file)
+                                     new-count
+                                     skipped-count)))
+
+          ;; Search for existing KOREADER_HISTORY drawer
+          (if (re-search-forward "^:KOREADER_HISTORY:" nil t)
+              ;; Found existing drawer, add entry after the drawer name
+              (save-excursion
+                (end-of-line)
+                (insert "\n" history-entry))
+
+            ;; No drawer found, create one after PROPERTIES drawer or at beginning
+            (goto-char (point-min))
+            (cond
+             ;; Try to insert after PROPERTIES drawer
+             ((re-search-forward "^:END:" nil t)
+              (end-of-line)
+              (insert "\n\n:KOREADER_HISTORY:\n" history-entry ":END:"))
+             ;; Otherwise insert after metadata
+             (t
+              (while (and (not (eobp)) (looking-at "^#\\+"))
+                (forward-line 1))
+              (insert "\n:KOREADER_HISTORY:\n" history-entry ":END:\n"))))
+
+        ;; Save the modified content
+        (write-region (point-min) (point-max) org-file)))))
+
+  (defun koreader-parse-existing-org (org-file)
+    "Parse ORG-FILE and return a hash table of existing entries with their content.
+  Key format: \"CHAPTER|PAGE|TIMESTAMP\", value is the full entry text."
+    (let ((entries-hash (make-hash-table :test 'equal)))
+      (when (file-exists-p org-file)
+        (with-temp-buffer
+          (insert-file-contents org-file)
+          (org-mode)
+          (goto-char (point-min))
+          ;; Skip metadata lines at the beginning
+          (while (and (not (eobp)) (looking-at "^#\\+"))
+            (forward-line 1))
+          (let (current-chapter)
+            (while (not (eobp))
+              (when (org-at-heading-p)
+                (let ((level (org-current-level))
+                      (heading (org-get-heading t t t t)))
+                  (cond
+                   ;; Top-level heading is a chapter
+                   ((= level 1)
+                    (setq current-chapter heading))
+                   ;; Second-level heading is an entry
+                   ((and (= level 2) current-chapter)
+                    ;; Extract page and timestamp from heading
+                    ;; Format: "Page 18 - 2025-09-27 00:05:51"
+                    (when (string-match "^Page \\([0-9]+\\) - \\(.+\\)" heading)
+                      (let* ((page (string-to-number (match-string 1 heading)))
+                             (timestamp (match-string 2 heading))
+                             (key (format "%s|%d|%s" current-chapter page timestamp))
+                             ;; Get the entire entry content
+                             (entry-start (point))
+                             (entry-end (save-excursion
+                                          (org-end-of-subtree t t)
+                                          (point)))
+                             (entry-text (buffer-substring-no-properties entry-start entry-end)))
+                        (puthash key entry-text entries-hash)))))))
+              (forward-line 1)))))
+      entries-hash))
+
+  (defun koreader-entry-exists-p (chapter page timestamp entries-hash)
+    "Check if an entry exists in ENTRIES-HASH.
+  CHAPTER, PAGE, and TIMESTAMP identify the entry.
+  Returns the entry text if it exists, nil otherwise."
+    (let ((key (format "%s|%d|%s" chapter page timestamp)))
+      (gethash key entries-hash)))
+
+  (defun koreader-json-to-org (json-file &optional org-file output-directory json-data denote-timestamp)
+    "Convert KOReader JSON-FILE to Org mode format.
+
+  Uses `koreader-use-denote' to determine output format.
+
+  Optional arguments:
+  - ORG-FILE: Specific output file path (overrides filename generation)
+  - OUTPUT-DIRECTORY: Directory for output file (default: same as JSON-FILE)
+  - JSON-DATA: Pre-loaded JSON data to avoid re-reading file
+  - DENOTE-TIMESTAMP: Timestamp string for Denote filename (ensures uniqueness)
+
+  Returns a plist with:
+  - :file - path to created/updated org file
+  - :new-count - number of new highlights added
+  - :skipped-count - number of existing highlights skipped
+  - :export-time - created_on timestamp from JSON
+
+  Examples:
+    ;; Convert a single JSON file to the same directory
+    (koreader-json-to-org \"/path/to/book.json\")
+
+    ;; Convert to a specific output directory
+    (koreader-json-to-org \"/path/to/book.json\" nil \"~/notes/books/\")
+
+    ;; Specify exact output file
+    (koreader-json-to-org \"/path/to/book.json\" \"~/notes/my-book.org\")"
+    (interactive "fKOReader JSON file: ")
+    (let* ((json-data (or json-data (json-read-file json-file)))
+           (title (alist-get 'title json-data))
+           (author (alist-get 'author json-data))
+           (pages (alist-get 'number_of_pages json-data))
+           (created-at (alist-get 'created_on json-data))
+           (entries (append (alist-get 'entries json-data) nil)) ;; Convert vector to list
+           (target-dir (or output-directory (file-name-directory json-file)))
+           (output-file (or org-file
+                            (if koreader-use-denote
+                                (koreader-generate-denote-filename target-dir title author denote-timestamp)
+                              (koreader-generate-plain-filename target-dir title author))))
+           (chapters-hash (make-hash-table :test 'equal))
+           (existing-entries (koreader-parse-existing-org output-file))
+           (new-count 0)
+           (skipped-count 0))
+
+      ;; Group entries by chapter
+      (dolist (entry entries)
+        (let* ((chapter (alist-get 'chapter entry))
+               (chapter-entries (gethash chapter chapters-hash)))
+          (puthash chapter (append chapter-entries (list entry)) chapters-hash)))
+
+      ;; Write to org file
+      (with-temp-file output-file
+        ;; Write metadata
+        (insert "#+title:       " title "\n")
+        (insert "#+date:        " (format-time-string "[%Y-%m-%d %a %H:%M]") "\n")
+        (insert "#+book_author: " author "\n")
+
+        ;; Denote-specific metadata
+        (when koreader-use-denote
+          (insert "#+filetags:    :" koreader-denote-tag ":\n")
+          ;; Extract identifier from filename (timestamp part)
+          (let ((identifier (if (string-match "^\\([0-9T]+\\)--" (file-name-nondirectory output-file))
+                                (match-string 1 (file-name-nondirectory output-file))
+                              (format-time-string "%Y%m%dT%H%M%S"))))
+            (insert "#+identifier:  " identifier "\n")))
+
+        (insert "\n")
+
+        ;; Properties drawer
+        (insert ":PROPERTIES:\n")
+        (when created-at
+          (insert ":KOREADER_EXPORT_TIME: " (number-to-string created-at) "\n"))
+        (insert ":KOREADER_FILE: " json-file "\n")
+        (insert ":PAGES: " (number-to-string pages) "\n")
+        (insert ":END:\n")
+
+        ;; Write chapters and entries
+        (maphash
+         (lambda (chapter entries)
+           (insert "\n* " chapter "\n")
+           (dolist (entry entries)
+             (let* ((page (alist-get 'page entry))
+                    (timestamp (alist-get 'time entry))
+                    (text (alist-get 'text entry))
+                    (note (alist-get 'note entry))
+                    (human-time (koreader-timestamp-to-human-readable timestamp))
+                    (existing-text (koreader-entry-exists-p chapter page human-time existing-entries)))
+
+               ;; Check if entry already exists
+               (if existing-text
+                   (progn
+                     (setq skipped-count (1+ skipped-count))
+                     ;; Insert the existing entry as-is
+                     (insert existing-text))
+                 ;; Entry is new, add it
+                 (setq new-count (1+ new-count))
+
+                 ;; Entry heading with page number, timestamp, and tags
+                 (insert "** Page " (number-to-string page) " - " human-time)
+                 (when koreader-add-entry-tags
+                   (let ((tag (if note
+                                  (concat ":" koreader-note-tag ":")
+                                (concat ":" koreader-highlight-tag ":"))))
+                     (insert " " tag)))
+                 (insert "\n")
+
+                 ;; Quoted text if present
+                 (when text
+                   (insert "#+BEGIN_QUOTE\n")
+                   (insert text "\n")
+                   (insert "#+END_QUOTE\n"))
+
+                 ;; Personal note if present
+                 (when note
+                   (insert "\n")
+                   (insert note "\n"))
+
+                 (insert "\n")))))
+         chapters-hash))
+
+      ;; Add merge history
+      (koreader-add-merge-history output-file json-file new-count skipped-count)
+
+      (message "Converted %s to %s (%d new, %d skipped)"
+               json-file output-file new-count skipped-count)
+      (when (called-interactively-p 'any)
+        (find-file output-file))
+
+      ;; Return detailed results
+      (list :file output-file
+            :new-count new-count
+            :skipped-count skipped-count
+            :export-time created-at)))
+
+  (defun koreader-process-json-directory (json-directory output-directory)
+    "Process all JSON files in JSON-DIRECTORY and output to OUTPUT-DIRECTORY.
+
+  For each book (title+author combination), only processes the LATEST export file,
+  as KOReader exports are cumulative. Skips books whose latest export has already
+  been processed (based on created_on timestamp).
+
+  Uses `koreader-use-denote' to determine the output format.
+
+  Returns a plist with summary statistics:
+  - :files-processed - number of JSON files processed
+  - :files-skipped - number of JSON files skipped (old exports or already processed)
+  - :total-new - total new highlights across all files
+  - :total-skipped - total existing highlights across all files
+  - :results - list of individual file results
+
+  Examples:
+    ;; Process all JSON files from KOReader export directory
+    (koreader-process-json-directory
+     \"~/koreader/exports/\"
+     \"~/notes/books/\")
+
+    ;; Check results
+    (let ((results (koreader-process-json-directory
+                    \"~/koreader/exports/\"
+                    \"~/notes/books/\")))
+      (message \"Processed %d books with %d new highlights\"
+               (plist-get results :files-processed)
+               (plist-get results :total-new)))"
+    (let* ((json-files (directory-files json-directory t "\\.json$"))
+           (processed-exports (koreader-get-processed-exports output-directory))
+           (books-hash (make-hash-table :test 'equal))
+           (files-to-process '())
+           (files-skipped 0)
+           (total-new 0)
+           (total-skipped 0)
+           (results '()))
+
+      ;; Group files by book and find latest export for each
+      (dolist (json-file json-files)
+        (let* ((metadata (koreader-get-json-metadata json-file))
+               (title (plist-get metadata :title))
+               (author (plist-get metadata :author))
+               (created-at (plist-get metadata :created-at))
+               (book-key (concat title "|" author))
+               (existing (gethash book-key books-hash)))
+
+          ;; Debug output
+          (when koreader-debug-logging
+            (message "File: %s | created_at: %s"
+                     (file-name-nondirectory json-file)
+                     created-at))
+
+          ;; Keep only the latest export for each book
+          (when (or (not existing)
+                    (> created-at (plist-get existing :created-at)))
+            (when koreader-debug-logging
+              (message "  -> Selected as latest for: %s" book-key))
+            (puthash book-key metadata books-hash))))
+
+      ;; Filter books that need processing (latest export not yet processed)
+      (maphash
+       (lambda (book-key metadata)
+         (if (koreader-json-needs-processing-p metadata processed-exports)
+             (push metadata files-to-process)
+           (setq files-skipped (1+ files-skipped))))
+       books-hash)
+
+      ;; Count files that were skipped because they're old exports
+      (setq files-skipped (+ files-skipped
+                             (- (length json-files)
+                                (hash-table-count books-hash))))
+
+      ;; Process each file using cached JSON data
+      ;; Track timestamp to ensure uniqueness for Denote filenames
+      (let ((current-time (current-time)))
+        (dolist (metadata files-to-process)
+          (let* ((json-file (plist-get metadata :file))
+                 (json-data (plist-get metadata :json-data))
+                 (timestamp (format-time-string "%Y%m%dT%H%M%S" current-time)))
+            (condition-case err
+                (let ((result (koreader-json-to-org json-file nil output-directory json-data timestamp)))
+                  (setq total-new (+ total-new (plist-get result :new-count)))
+                  (setq total-skipped (+ total-skipped (plist-get result :skipped-count)))
+                  (push result results))
+              (error
+               (message "Error processing %s: %s" json-file (error-message-string err))))
+            ;; Increment time by 1 second for next file
+            (setq current-time (time-add current-time (seconds-to-time 1))))))
+
+      ;; Return summary
+      (list :files-processed (length files-to-process)
+            :files-skipped files-skipped
+            :total-new total-new
+            :total-skipped total-skipped
+            :results (nreverse results))))
+
+  (provide 'koreader-json-to-org)
+  ;;; koreader-json-to-org.el ends here
+#+end_src
+
