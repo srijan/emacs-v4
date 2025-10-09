@@ -311,7 +311,7 @@ TODO: Need to evaluate how much speedup this gives
   (global-visual-line-mode 1)
 
 #+end_src
-** Which-Key
+** Discoverability
 #+begin_src emacs-lisp :tangle "post-init.el"
 
   (use-package which-key
@@ -332,6 +332,8 @@ TODO: Need to evaluate how much speedup this gives
     (uniquify-separator "•")
     (uniquify-after-kill-buffer-p t)
     (uniquify-ignore-buffers-re "^\\*"))
+
+  (use-package casual)
 
 #+end_src
 ** Looks & Themes
@@ -1001,6 +1003,59 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 
   (when my-windows-p
     (use-package powershell))
+
+  (use-package dwim-shell-command
+    :demand t
+    :bind (([remap shell-command] . dwim-shell-command)
+           :map dired-mode-map
+           ([remap dired-do-async-shell-command] . dwim-shell-command)
+           ([remap dired-do-shell-command] . dwim-shell-command)
+           ([remap dired-smart-shell-command] . dwim-shell-command))
+    :config
+    (require 'proced)
+    (defun dwim-shell-commands-kill-process ()
+      "Select and kill process."
+      (interactive)
+      (let* ((pid-width 5)
+             (comm-width 25)
+             (user-width 10)
+             (processes (proced-process-attributes))
+             (candidates
+              (mapcar (lambda (attributes)
+                        (let* ((process (cdr attributes))
+                               (pid (format (format "%%%ds" pid-width) (map-elt process 'pid)))
+                               (user (format (format "%%-%ds" user-width)
+                                             (truncate-string-to-width
+                                              (map-elt process 'user) user-width nil nil t)))
+                               (comm (format (format "%%-%ds" comm-width)
+                                             (truncate-string-to-width
+                                              (map-elt process 'comm) comm-width nil nil t)))
+                               (args-width (- (window-width) (+ pid-width user-width comm-width 3)))
+                               (args (map-elt process 'args)))
+                          (cons (if args
+                                    (format "%s %s %s %s" pid user comm (truncate-string-to-width args args-width nil nil t))
+                                  (format "%s %s %s" pid user comm))
+                                process)))
+                      processes))
+             (selection (map-elt candidates
+                                 (completing-read "kill process: "
+                                                  (seq-sort
+                                                   (lambda (p1 p2)
+                                                     (string-lessp (nth 2 (split-string (string-trim (car p1))))
+                                                                   (nth 2 (split-string (string-trim (car p2))))))
+                                                   candidates) nil t)))
+             (prompt-title (format "%s %s %s"
+                                   (map-elt selection 'pid)
+                                   (map-elt selection 'user)
+                                   (map-elt selection 'comm))))
+        (when (y-or-n-p (format "Kill %s?" prompt-title))
+          (dwim-shell-command-on-marked-files
+           (format "Kill %s" prompt-title)
+           (format "kill -9 %d" (map-elt selection 'pid))
+           :utils "kill"
+           :error-autofocus t
+           :silent-success t))))
+    )
 
 #+end_src
 ** Authentication and Passwords
@@ -1751,10 +1806,17 @@ One alternative can be to have a separate script to copy the required passwords 
         (call-interactively #'denote-sequence)))    
     :hook (dired-mode . denote-dired-mode)
     :bind
-    ("C-c n n" . denote)
-    ("C-c n N" . my/denote-zettel)
-    ("C-c n d" . (lambda () (interactive) (dired my-notes-dir)))
-    ("C-c n r" . my-weekly-review-journal)
+    ( :map global-map
+      ("C-c n n" . denote)
+      ("C-c n N" . my/denote-zettel)
+      ("C-c n d" . (lambda () (interactive) (dired my-notes-dir)))
+      ("C-c n D" . denote-sequence-dired)
+      ("C-c n r" . my-weekly-review-journal)
+      )
+    ( :map text-mode-map
+      ("C-c n i" . denote-link)
+      ("C-c n R" . denote-rename-file-using-front-matter)
+      )
     )
   (use-package denote-journal
     :after denote
@@ -2575,6 +2637,49 @@ One alternative can be to have a separate script to copy the required passwords 
     (defun jira-api--token (host)
       (auth-source-pick-first-password
        :host "work.greyorange.com-jira" :user "credential"))
+
+    (defun sj/jira-visit-issue-at-point ()
+      "Visit the jira issue detail page for the jira key under point."
+      (interactive)
+      (require 'jira-complete)
+      (require 'jira-detail)
+      (let ((key (jira-complete--find-key-at-point)))
+        (if key
+            (jira-detail-show-issue key)
+          (message "No Jira issue key found at point"))))
+
+    ;; Embark integration for Jira issue keys
+    (with-eval-after-load 'embark
+      (defun sj/embark-target-jira-key ()
+        "Target a Jira issue key at point for embark actions."
+        (require 'jira-complete)
+        (when-let ((key (jira-complete--find-key-at-point)))
+          (when (jira-complete--validate-key key)
+            (let ((bounds (bounds-of-thing-at-point 'symbol)))
+              `(jira-key ,key . ,bounds)))))
+
+      (add-to-list 'embark-target-finders 'sj/embark-target-jira-key)
+
+      (defvar-keymap embark-jira-key-map
+        :doc "Keymap for Jira issue key actions."
+        :parent embark-general-map
+        "v" (cons "Visit issue detail page in Emacs"
+                  (lambda (key)
+                    (interactive "s")
+                    (require 'jira-detail)
+                    (jira-detail-show-issue key)))
+        "o" (cons "Open Jira issue in browser"
+                  (lambda (key)
+                    (interactive "s")
+                    (require 'jira-actions)
+                    (jira-actions-open-issue key)))
+        "c" (cons "Copy issue key to clipboard"
+                  (lambda (key)
+                    (interactive "s")
+                    (require 'jira-actions)
+                    (jira-actions-copy-issues-id-to-clipboard key))))
+
+      (add-to-list 'embark-keymap-alist '(jira-key . embark-jira-key-map)))
     )
 
 #+end_src
