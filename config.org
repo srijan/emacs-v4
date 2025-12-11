@@ -2932,6 +2932,15 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package hnreader
     :demand t
     :config
+    (defun my-hnreader-comments-readonly (dom url)
+      (view-mode 1)
+      (org-fold-show-all)
+      )
+    (advice-add
+     'hnreader--print-comments
+     :after
+     'my-hnreader-comments-readonly
+     )
     (sj-browse-url-set-handler-rx
      'hn
      '((seq line-start "https://" (or "news.ycombinator.com" "hnreader.com") "/item?id=" (one-or-more digit)))
