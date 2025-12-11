@@ -1773,11 +1773,14 @@ One alternative can be to have a separate script to copy the required passwords 
     )
 #+end_src
 *** Denote
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (setq my-notes-dir     (expand-file-name     "~/ndxrd-uxxs3/notes/"))
-  (setq my-journals-dir  (concat my-notes-dir  "journals"))
-  (setq my-zettels-dir   (concat my-notes-dir  "main"))
-  (setq my-templates-dir (concat my-notes-dir  "templates"))
+#+name: denote_config
+#+begin_src emacs-lisp
+  (setq my-notes-dir           (expand-file-name     "~/ndxrd-uxxs3/notes/"))
+  (setq my-journals-dir        (concat my-notes-dir  "journals"))
+  (setq my-zettels-dir         (concat my-notes-dir  "main"))
+  (setq my-templates-dir       (concat my-notes-dir  "templates"))
+  (setq my-reference-notes-dir (concat my-notes-dir  "reference"))
+  (setq my-inbox-notes-dir     (concat my-notes-dir  "inbox"))
 
   (use-package denote
     ;; :demand
@@ -1821,15 +1824,27 @@ One alternative can be to have a separate script to copy the required passwords 
       "Create a permanent Zettelkasten note with Folgezettel ID."
       (interactive)
       (let ((denote-directory my-zettels-dir))
-        (call-interactively #'denote-sequence)))    
+        (call-interactively #'denote-sequence)))
+    (defun my/denote-inbox-note ()
+      "Create a note in the inbox."
+      (interactive)
+      (let ((denote-directory my-inbox-notes-dir))
+        (call-interactively #'denote)))
+    (defun my/create-reference-note ()
+      "Create a reference note in my zettelkasten reference folder"
+      (interactive)
+      (let ((denote-directory my-reference-notes-dir)
+            (denote-known-keywords '("books" "music" "shows" "movies" "talks" "podcast")))
+        (call-interactively #'denote)))
     :hook (dired-mode . denote-dired-mode)
     :bind
     ( :map global-map
-      ("C-c n n" . denote)
+      ("C-c n n" . my/denote-inbox-note)
       ("C-c n N" . my/denote-zettel)
       ("C-c n d" . (lambda () (interactive) (dired my-notes-dir)))
       ("C-c n D" . denote-sequence-dired)
       ("C-c n r" . my-weekly-review-journal)
+      ("C-c n l" . my/create-reference-note)
       )
     ( :map text-mode-map
       ("C-c n i" . denote-link)
@@ -1866,14 +1881,26 @@ One alternative can be to have a separate script to copy the required passwords 
     ("C-c n f" . consult-notes)
     ("C-c n s" . consult-notes-search-in-all-notes)
     )
-
 #+end_src
-*** Literature Notes
-#+begin_src emacs-lisp :tangle "post-init.el"
+#+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
+  <<denote_config>>
+#+end_src
+#+begin_src emacs-lisp :tangle "~/ndxrd-uxxs3/notes/denote_config.el" :epilogue (format-time-string ";; Last generated on %c")
+  ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
+  ;; This file has been generated from my emacs's config.org file and is for
+  ;; reference purposes only. DO NOT EDIT.
+#+end_src
+#+begin_src emacs-lisp :tangle "~/ndxrd-uxxs3/notes/denote_config.el" :noweb yes
+  <<denote_config>>
+#+end_src
+*** Literature Notes from Koreader
+#+name: koreader_config
+#+begin_src emacs-lisp
   ;; KOReader configuration
   (require 'koreader-json-to-org)
   (setq my-koreader-export-dir  (expand-file-name "~/ndxrd-uxxs3/Documents/koreader/clipboard/"))
   (setq my-koreader-output-dir  (concat my-notes-dir "reference/"))
+  (setq koreader-denote-tag "books:inbox")
 
   (defun my/koreader-import-all (&optional skip-sync)
     "Import all unprocessed KOReader JSON files from export directory.
@@ -1909,6 +1936,12 @@ One alternative can be to have a separate script to copy the required passwords 
                (plist-get results :total-new)
                (plist-get results :total-skipped))))
 
+#+end_src
+#+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
+  <<koreader_config>>
+#+end_src
+#+begin_src emacs-lisp :tangle "~/ndxrd-uxxs3/notes/denote_config.el" :noweb yes
+  <<koreader_config>>
 #+end_src
 ** Ediff
 #+begin_src emacs-lisp :tangle "post-init.el"
