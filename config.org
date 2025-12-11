@@ -2685,6 +2685,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (setq jira-issues-table-fields
           '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
     (setq jira-debug nil)
+
     (defun jira-api--token (host)
       (auth-source-pick-first-password
        :host "work.greyorange.com-jira" :user "credential"))
@@ -2740,6 +2741,11 @@ One alternative can be to have a separate script to copy the required passwords 
     (use-package reader
       :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
     	               :files ("*.el" "render-core.so")
+    	               :pre-build ("make" "all"))))
+  (when my-mac-p
+    (use-package reader
+      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
+    	               :files ("*.el" "render-core.dylib")
     	               :pre-build ("make" "all"))))
 #+end_src
 ** Social and Browser
@@ -2805,6 +2811,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :custom
     (elfeed-use-curl t)
     (elfeed-log-level 'debug)
+    (elfeed-search-title-max-width 120)
     :config
     (elfeed-set-timeout 36000)
 
@@ -3021,6 +3028,7 @@ One alternative can be to have a separate script to copy the required passwords 
 ** Desktop Utilities
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package ready-player)
   (when my-linux-p
     (defun sj/default-browser (&optional name)
       "Set the default browser based on the given NAME."
