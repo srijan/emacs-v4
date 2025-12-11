@@ -1090,7 +1090,8 @@ One alternative can be to have a separate script to copy the required passwords 
 
     ;; Visual and behavior changes
     (org-support-shift-select t)
-    (org-ellipsis " ▼")
+    ;; (org-ellipsis " ▼")
+    (org-ellipsis "…")
 
     (org-agenda-start-with-log-mode t)
     (org-agenda-log-mode-items '(clock))
@@ -1099,6 +1100,16 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-startup-folded 'content)
     (org-startup-indented t)
     (org-startup-with-inline-images t)
+
+    (org-auto-align-tags nil)
+    (org-tags-column 0)
+    (org-catch-invisible-edits 'show-and-error)
+    (org-special-ctrl-a/e t)
+    (org-insert-heading-respect-content t)
+    (org-hide-emphasis-markers t)
+    (org-pretty-entities t)
+    (org-agenda-tags-column 0)
+    
 
     :config
 
@@ -1258,6 +1269,13 @@ One alternative can be to have a separate script to copy the required passwords 
     :config
     (setopt org-edna-use-inheritance t)
     (org-edna-mode 1))
+
+  (use-package org-modern
+    :after org
+    :demand t
+    :config
+    (global-org-modern-mode 1)
+    )
 
 #+end_src
 ** COMMENT Org and GTD (Old)
