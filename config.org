@@ -1096,7 +1096,129 @@ One alternative can be to have a separate script to copy the required passwords 
     :config
     (auth-source-1password-enable))
 #+end_src
-** Org
+** Org and gtd (org-gtd v4)
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package org
+    :ensure nil
+    :demand t
+    :delight org-indent-mode
+    :custom
+    (org-support-shift-select t)
+    (org-ellipsis "…")
+    (org-startup-with-inline-images t)
+    (org-auto-align-tags nil)
+    (org-tags-column 0)
+    (org-catch-invisible-edits 'show-and-error)
+    (org-special-ctrl-a/e t)
+    (org-insert-heading-respect-content t)
+    (org-hide-emphasis-markers t)
+    (org-pretty-entities t)
+    (org-agenda-tags-column 0)
+    (org-log-into-drawer t)
+
+    (org-startup-folded 'content)
+    (org-startup-indented t)
+    )
+
+  (use-package org-edna
+    :delight
+    :demand t
+    :after org
+    :custom
+    (org-edna-use-inheritance t)
+    :config
+    (org-edna-mode 1))
+
+  (use-package org-gtd
+    :demand t
+    :after (org org-edna)
+    :init
+    (setq org-gtd-update-ack "4.0.0")
+    :custom
+    (org-todo-keywords
+     '((sequence "TODO(t)" "NEXT(n)" "WAIT(w@)" "|" "DONE(d)" "CNCL(c@)")))
+    (org-gtd-keyword-mapping
+     '((todo . "TODO")      ; tasks not ready to act on
+       (next . "NEXT")      ; tasks ready to act on immediately
+       (wait . "WAIT")      ; tasks blocked or delegated
+       (done . "DONE")      ; tasks successfully completed
+       (canceled . "CNCL"))) ; tasks that won't be completed
+
+    ;; Tags
+    (org-tag-persistent-alist
+     '((:startgroup)
+       ("work" . ?w) ("personal" . ?p)
+       (:endgroup)
+       (:startgroup)
+       ("@computer" . ?c) ("@phone" . ?P) ("@errands" . ?e)
+       ("@office" . ?o) ("@home" . ?h) ("@anywhere" . ?a)
+       (:endgroup)))
+
+    ;; Areas of Focus (subcategories)
+    (org-gtd-areas-of-focus
+     '("Scrum" "HLD" "Architecture" "DevOps" "Support"
+       "Family" "Finances" "Sysadmin" "Learning" "Health"))
+
+    (org-gtd-organize-hooks '(org-gtd-set-area-of-focus
+                              my/org-gtd-maybe-set-tags))
+
+    (org-gtd-save-after-organize t)
+    (org-gtd-prefix-width 48)
+
+
+    :config
+    (setopt org-gtd-directory "~/ndxrd-uxxs3/org/")
+    (setopt org-agenda-files (list org-gtd-directory))
+
+    (defun org-capture-inbox ()
+      (interactive)
+      (org-gtd-capture nil "i"))
+
+    (defun org-capture-mail ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-gtd-capture nil "l"))
+
+    (defun org-open-inbox ()
+      (interactive)
+      (find-file "~/ndxrd-uxxs3/org/inbox.org")
+      )
+    (defun my/org-gtd-maybe-set-tags ()
+      "Use as a hook when decorating items after clarifying them."
+      (unless (org-gtd-organize-type-member-p '(quick-action knowledge trash))
+        (org-set-tags-command)))
+
+
+    :bind
+    (("C-c d" . org-gtd-command-center)
+     ("C-c i" . org-capture-inbox)
+     ("C-c j" . org-open-inbox)
+     ("C-c l" . org-store-link)
+     :map org-gtd-clarify-mode-map
+     ("C-c c" . org-gtd-organize)
+     :map org-agenda-mode-map
+     ("C-c ." . org-gtd-agenda-transient)
+     )
+    :config
+    (org-gtd-mode 1))
+
+  (use-package org-protocol
+    :ensure nil
+    :after org
+    :demand t
+    :custom
+    (org-protocol-default-template-key "l"))
+
+
+  (use-package org-modern
+    :after org
+    :demand t
+    :config
+    (global-org-modern-mode 1))
+
+#+end_src
+
+** COMMENT Org and gtd (custom)
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
     :ensure nil
@@ -1343,7 +1465,7 @@ One alternative can be to have a separate script to copy the required passwords 
     )
 
 #+end_src
-** COMMENT Org and GTD (Old)
+** COMMENT Org and GTD (org-gtd v3)
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
     :ensure nil
