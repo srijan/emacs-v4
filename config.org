@@ -144,12 +144,13 @@ This will generate a header at the top of the tangled file to indicate it is gen
 
 ** System information
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (defvar my-linux-p (equal (system-name) "GGN001944"))
-  (defvar my-windows-p (equal (system-name) "SHADOW"))
-  (defvar my-mac-p (equal (system-name) "USA600098.local"))
+  (defvar my-linux-p (eq system-type 'gnu/linux))
+  (defvar my-windows-p (eq system-type 'windows-nt))
+  (defvar my-mac-p (eq system-type 'darwin))
   (defvar my-phone-p (not (null (getenv "ANDROID_ROOT")))
     "If non-nil, GNU Emacs is running on Termux.")
   (when my-phone-p (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
+  (when my-mac-p (setopt server-use-tcp t))
   (server-start)
 #+end_src
 ** COMMENT Compile Angel
@@ -216,7 +217,13 @@ TODO: Need to evaluate how much speedup this gives
       :demand t
       :config
       (add-to-list 'exec-path-from-shell-variables "ANTHROPIC_API_KEY")
+      (add-to-list 'exec-path-from-shell-variables "TODOIST_TOKEN")
       (exec-path-from-shell-initialize))
+
+    (use-package emacs-anywhere
+      :disabled
+      :ensure (:host github :repo "nohzafk/emacs-anywhere")
+      :demand t)
     )
 #+end_src
 ** Misc config
@@ -364,9 +371,9 @@ TODO: Need to evaluate how much speedup this gives
       (defun my-ef-themes-mode-line ()
         "Tweak the style of the mode lines."
         (ef-themes-with-colors
-          (custom-set-faces
-           `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
-           `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
+         (custom-set-faces
+          `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
+          `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
       :init
       ;; (ef-themes-select 'ef-maris-dark)
       )
@@ -400,7 +407,7 @@ TODO: Need to evaluate how much speedup this gives
         ;; (set-face-font 'default "Aporetic Sans Mono-17")
         ;; (set-face-font 'variable-pitch "Inter-15")
         ;; (set-face-font 'default "Berkeley Mono-15")
-        (set-face-attribute 'default nil :family "Berkeley Mono" :height 150 :weight 'semilight)
+        (set-face-attribute 'default nil :family "Berkeley Mono" :height 140 :weight 'semilight)
         (set-face-attribute 'bold nil :weight 'regular)
         )
       (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
@@ -667,6 +674,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
            ("M-g g" . consult-goto-line)
            ("M-g M-g" . consult-goto-line)
            ("M-g o" . consult-outline)
+           ("M-g t" . consult-org-agenda)
            ("M-g m" . consult-mark)
            ("M-g k" . consult-global-mark)
            ("M-g i" . consult-imenu)
@@ -894,11 +902,14 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :init
     (doom-modeline-mode 1)
     :custom
+    (doom-modeline-enable-word-count t)
     (doom-modeline-buffer-encoding nil)
-    (doom-modeline-time-icon nil))
+    (doom-modeline-time-icon nil)
+    (doom-modeline-minor-modes t))
   ;; (use-package hide-mode-line :demand t) - replaced with built-in mode-line-invisible-mode (emacs 31)
   (use-package nano-modeline
     :disabled
+    :demand
     :config
     (setopt mode-line-format nil)
     (nano-modeline-text-mode t)
@@ -1169,13 +1180,40 @@ One alternative can be to have a separate script to copy the required passwords 
     (setopt org-log-done 'time)
 
     ;; Tags
-    (setopt org-tag-persistent-alist '((:startgroup . nil)
-                                       ("@computer") ("@mail") ("@errands") ("@calls") ("@meetings")
-                                       (:endgroup . nil) (:startgroup . nil)
-                                       ("@tz-ist") ("@tz-est") ("@anytime")
-                                       (:endgroup . nil)
-                                       ("@fun") ("@agenda") ("@home") ("@anywhere")
-                                       ))
+    ;; (setopt org-tag-persistent-alist '((:startgroup . nil)
+    ;;                                    ("@computer") ("@mail") ("@errands") ("@calls") ("@meetings")
+    ;;                                    (:endgroup . nil) (:startgroup . nil)
+    ;;                                    ("@tz-ist") ("@tz-est") ("@anytime")
+    ;;                                    (:endgroup . nil)
+    ;;                                    ("@fun") ("@agenda") ("@home") ("@anywhere")
+    ;;                                    ))
+    (setopt org-tag-persistent-alist
+            '((:startgroup . nil)
+              ("@office" . ?o)
+              ("@home" . ?h)
+              ("@computer" . ?c)
+              ("@phone" . ?p)
+              ("@errands" . ?e)
+              (:endgroup . nil)
+              ("@waiting" . ?w)
+              ("@1on1s" . ?1)
+              ("@deep" . ?d)
+              ("@shallow" . ?s)))
+
+    (defvar my/gtd-context-tags '("@office" "@home" "@computer" "@phone" "@errands" "@waiting" "@1on1s" "@deep" "@shallow")
+      "Valid GTD context tags.")
+
+    (defun my/skip-if-has-context ()
+      "Skip entry if it has any valid context tag."
+      (let ((tags (org-get-tags)))
+        (when (cl-intersection tags my/gtd-context-tags :test #'string=)
+          (org-entry-end-position))))
+
+    (defun my/skip-if-missing-context ()
+      "Skip entry if it has no valid context tag."
+      (let ((tags (org-get-tags)))
+        (unless (cl-intersection tags my/gtd-context-tags :test #'string=)
+          (org-entry-end-position))))
 
     ;; Agenda
     (setopt org-agenda-custom-commands
@@ -1200,7 +1238,20 @@ One alternative can be to have a separate script to copy the required passwords 
                          (org-agenda-overriding-header "\nInbox\n")))
                 (tags "CLOSED>=\"<today>\""
                       ((org-agenda-prefix-format "    ")
-                       (org-agenda-overriding-header "\nCompleted today\n")))))))
+                       (org-agenda-overriding-header "\nCompleted today\n")))))
+              ("c" . "Contexts")
+              ("cc" "Computer" tags-todo "@computer/NEXT"
+               ((org-agenda-overriding-header "\nComputer - Next Actions\n")))
+              ("co" "Office" tags-todo "@office/NEXT"
+               ((org-agenda-overriding-header "\nOffice - Next Actions\n")))
+              ("ch" "Home" tags-todo "@home/NEXT"
+               ((org-agenda-overriding-header "\nHome - Next Actions\n")))
+
+              ("m" . "Maintenance")
+              ("mt" "Missing context" todo "NEXT"
+               ((org-agenda-skip-function 'my/skip-if-has-context)
+                (org-agenda-overriding-header "\nNEXT without context tag\n")))
+              ))
 
     ;; Archival
     (defun my/org-archive-location-func ()
@@ -1250,8 +1301,9 @@ One alternative can be to have a separate script to copy the required passwords 
                (cmd (format "open -g '%s'" url)))
           (shell-command cmd)))
 
-      (add-hook 'org-clock-in-hook #'my/focus-clock-in)
-      (add-hook 'org-clock-out-hook #'my/focus-clock-out))
+      ;;(add-hook 'org-clock-in-hook #'my/focus-clock-in)
+      ;;(add-hook 'org-clock-out-hook #'my/focus-clock-out)
+      )
 
     )
 
@@ -1668,6 +1720,12 @@ One alternative can be to have a separate script to copy the required passwords 
                        :help "Save all modified org buffers")
     )
 #+end_src
+** Hyperbole / Dashboard
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package hyperbole
+    :demand t)
+
+#+end_src
 ** Popup frames
 #+begin_src emacs-lisp :tangle "post-init.el"
   ;;;; Run commands in a popup frame
@@ -1709,8 +1767,9 @@ One alternative can be to have a separate script to copy the required passwords 
 
   ;; (add-hook 'tmr-timer-created-functions #'prot-window-delete-popup-frame)C
 #+END_SRC
-#+BEGIN_SRC emacs-lisp
-  (use-package todoist)
+
+#+BEGIN_SRC emacs-lisp :tangle "post-init.el"
+  (use-package todoist :demand t)
 
   (defun fetch-todoist-inbox ()
     (interactive)
@@ -1853,6 +1912,7 @@ One alternative can be to have a separate script to copy the required passwords 
     )
   (use-package denote-journal
     :after denote
+    :hook (calendar-mode . denote-journal-calendar-mode)
     :custom
     (denote-journal-directory my-journals-dir)
     (denote-journal-title-format 'day-date-month-year)
@@ -2280,7 +2340,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :mode ("README\\.md\\'" . gfm-mode)
     :init (setq markdown-command '("pandoc" "--from=markdown" "--to=html5"))
     :bind (:map markdown-mode-map
-           ("M-n" . nil)))
+                ("M-n" . nil)))
   (use-package edit-indirect)
   (use-package json-mode)
   (use-package js
@@ -2310,11 +2370,11 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package yasnippet
     :diminish (yas-minor-mode)
+    :demand t
     :custom
     (yas-snippet-dirs (list (expand-file-name "snippets" minimal-emacs-user-directory)))
-    :hook (prog-mode . yas-minor-mode)
-    ;; :config
-    ;; (yas-global-mode t)
+    :config
+    (yas-global-mode t)
     )
 
   ;; Install the official Erlang mode
@@ -2685,10 +2745,17 @@ One alternative can be to have a separate script to copy the required passwords 
     (setq jira-issues-table-fields
           '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
     (setq jira-debug nil)
+    (setq jira-detail-show-announcements nil)
 
-    (defun jira-api--token (host)
+    (defun jira-api--token ()
       (auth-source-pick-first-password
        :host "work.greyorange.com-jira" :user "credential"))
+
+    ;; Issue fields customizations
+    (add-to-list 'jira-issues-fields
+                 '(:epic-link . ((:path . (fields customfield_10002))
+                                 (:columns . 5)
+                                 (:name . "Epic Link"))))
 
     (defun sj/jira-visit-issue-at-point ()
       "Visit the jira issue detail page for the jira key under point."
@@ -3053,6 +3120,10 @@ One alternative can be to have a separate script to copy the required passwords 
       (kill-new gpg-signature)
       (message "GPG signature copied to clipboard.")))
 
+#+end_src
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package time-zones
+    :demand t)
 #+end_src
 ** Homeassistant
 #+begin_src emacs-lisp :tangle "post-init.el"
