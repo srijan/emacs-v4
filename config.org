@@ -317,6 +317,14 @@ TODO: Need to evaluate how much speedup this gives
 
   (global-visual-line-mode 1)
 
+  (defun kill-region-or-backward-word ()
+    "If the region is active and non-empty, call `kill-region'.
+  Otherwise, call `backward-kill-word'."
+    (interactive)
+    (call-interactively
+     (if (use-region-p) 'kill-region 'backward-kill-word)))
+  (global-set-key (kbd "C-w") 'kill-region-or-backward-word)
+
 #+end_src
 ** Discoverability
 #+begin_src emacs-lisp :tangle "post-init.el"
