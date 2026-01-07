@@ -331,6 +331,7 @@ TODO: Need to evaluate how much speedup this gives
 
   (use-package which-key
     :ensure nil ; builtin
+    :delight
     :defer t
     :commands which-key-mode
     :hook (after-init . which-key-mode)
@@ -894,8 +895,12 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 #+end_src
 ** Modeline
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package diminish
-    :config (require 'diminish))
+  (use-package delight
+    :demand t)
+  (use-package emacs
+    :ensure nil
+    :delight
+    (visual-line-mode))
   (use-package timu-line
     :disabled
     :ensure t
@@ -2121,6 +2126,7 @@ One alternative can be to have a separate script to copy the required passwords 
 ** Dictionary and spelling
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jinx
+    :delight
     :hook (text-mode . jinx-mode)
     :bind ("M-$" . jinx-correct)
     )
@@ -2185,7 +2191,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
   (use-package eldoc
     :ensure nil
-    :diminish eldoc-mode)
+    :delight)
 #+end_src
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2284,9 +2290,8 @@ One alternative can be to have a separate script to copy the required passwords 
 
 
   (use-package copilot
-    :disabled
     :if (not my-phone-p)
-    :diminish
+    :delight
     ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
     :ensure t
     :hook (prog-mode . (lambda ()
@@ -2377,8 +2382,8 @@ One alternative can be to have a separate script to copy the required passwords 
 ** Erlang & LSP
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package yasnippet
-    :diminish (yas-minor-mode)
     :demand t
+    :delight (yas-minor-mode)
     :custom
     (yas-snippet-dirs (list (expand-file-name "snippets" minimal-emacs-user-directory)))
     :config
