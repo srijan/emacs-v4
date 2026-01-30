@@ -1832,15 +1832,15 @@ One alternative can be to have a separate script to copy the required passwords 
           (org-clock-goto)
         (message "No active clock")))
 
-    (defun org-agenda-gtd ()
-      (interactive)
-      (org-agenda nil "g"))
+    ;; (defun org-agenda-gtd ()
+    ;;   (interactive)
+    ;;   (org-agenda nil "g"))
 
     (setq tool-bar-map (make-sparse-keymap))
     (tool-bar-add-item "mail/inbox" 'org-open-inbox 'org-inbox-button
                        :help "Open Inbox")
     (tool-bar-add-item nil nil 'separator-1 :separator t)
-    (tool-bar-add-item "index" 'org-agenda-gtd 'gtd-engage-button
+    (tool-bar-add-item "index" 'org-gtd-engage 'gtd-engage-button
                        :help "GTD Engage")
     (tool-bar-add-item "gnus/toggle-subscription" 'org-resolve-clocks 'resolve-clocks-button
                        :help "Resolve Clocks")
