@@ -3017,6 +3017,71 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (advice-add 'jira-detail--issue-team :after #'my/jira-detail-add-custom-fields)
 
+    ;; Show child issues for Epics (before comments section)
+    (defun my/jira-detail-show-epic-children (key)
+      "Fetch and display child issues for epic KEY.
+  Uses `jira-detail--current' buffer-local variable for issue data."
+      (with-current-buffer (jira-detail--get-issue-buffer key)
+        (let* ((issue jira-detail--current)
+               (issue-type (jira-table-extract-field jira-issues-fields :issue-type-name issue)))
+          (when (string= issue-type "Epic")
+            (jira-api-search
+             :params `(("jql" . ,(format "\"Epic Link\" = %s ORDER BY status ASC, priority DESC" key))
+                       ("maxResults" . "50")
+                       ("fields" . "key,summary,status,assignee,issuetype,priority"))
+             :callback (lambda (data _response)
+                         (my/jira-detail--insert-epic-children key data)))))))
+
+    (defun my/jira-detail--insert-epic-children (key data)
+      "Insert epic children DATA into the detail buffer for KEY."
+      (let ((issues (alist-get 'issues data)))
+        (when (and issues (> (length issues) 0))
+          (with-current-buffer (jira-detail--get-issue-buffer key)
+            (let ((inhibit-read-only t))
+              ;; Try to insert after Linked Issues, or before Comments, or at end
+              (goto-char (point-min))
+              (cond
+               ;; After Linked Issues section if it exists
+               ((re-search-forward "^🔗 Linked Issues" nil t)
+                (when-let ((section (magit-current-section)))
+                  (goto-char (oref section end))))
+               ;; Before Comments section if it exists
+               ((progn (goto-char (point-min))
+                       (re-search-forward "^💬 Comments" nil t))
+                (goto-char (match-beginning 0)))
+               ;; Otherwise at end
+               (t (goto-char (point-max))))
+              (magit-insert-section (jira-epic-children nil nil)
+                (magit-insert-section (epic-children-list nil nil)
+                  (magit-insert-heading (format "📦 Epic Children (%d issues)" (length issues)))
+                  (magit-insert-section-body
+                    (seq-doseq (child issues)
+                      (let* ((child-key (alist-get 'key child))
+                             (fields (alist-get 'fields child))
+                             (summary (alist-get 'summary fields))
+                             (status (alist-get 'status fields)))
+                        (magit-insert-section (jira-epic-child-section child-key nil)
+                          (insert (format " - [child] %s %s %s\n"
+                                          (jira-fmt-issue-key-not-tabulated child-key)
+                                          (jira-fmt-issue-status status)
+                                          (or summary "")))))))
+                  (insert "\n")))))))
+
+    ;; Hook to fetch epic children before comments (guarantees ordering)
+    (advice-add 'jira-detail--show-comments :before #'my/jira-detail-show-epic-children)
+
+    ;; Scroll to top after comments are inserted (last async operation)
+    (defun my/jira-detail-scroll-to-top (key _comments)
+      "Scroll the jira detail buffer to the top after comments load."
+      (let ((buf (jira-detail--get-issue-buffer key)))
+        (with-current-buffer buf
+          (goto-char (point-min)))
+        (when-let ((win (get-buffer-window buf t)))
+          (set-window-point win 1)
+          (set-window-start win 1))))
+
+    (advice-add 'jira-detail--comments :after #'my/jira-detail-scroll-to-top)
+
     (defun sj/jira-visit-issue-at-point ()
       "Visit the jira issue detail page for the jira key under point."
       (interactive)
