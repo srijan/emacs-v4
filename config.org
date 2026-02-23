@@ -1115,9 +1115,26 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-pretty-entities t)
     (org-agenda-tags-column 0)
     (org-log-into-drawer t)
+    (org-agenda-window-setup 'only-window)
 
-    (org-startup-folded 'content)
+    (org-startup-folded 'nofold)
     (org-startup-indented t)
+    :config
+    
+    ;; Clocking
+    (setopt org-clock-persist 'history)
+    (setopt org-log-into-drawer t)
+    (setopt org-log-done 'time)
+    (org-clock-persistence-insinuate)
+    (defun current-clock-time-to-file ()
+      (interactive)
+      (with-temp-file "~/.local/state/task"
+        (if (org-clocking-p)
+            (insert (org-clock-get-clock-string))
+          (insert "No Task"))))
+    (run-with-timer 1 60 'current-clock-time-to-file)
+    (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
+    (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
     )
 
   (use-package org-edna
