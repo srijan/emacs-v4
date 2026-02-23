@@ -2873,10 +2873,10 @@ One alternative can be to have a separate script to copy the required passwords 
           org-msg-convert-citation t
           org-msg-signature "
 
-     ,#+begin_signature
-     --
-     ,*Srijan Choudhary*
-     ,#+end_signature")
+       ,#+begin_signature
+       --
+       ,*Srijan Choudhary*
+       ,#+end_signature"
     (org-msg-mode)
     )
 
@@ -3384,7 +3384,11 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure t
     :config
     (setq mastodon-instance-url "https://indieweb.social"
-          mastodon-active-user "srijan")
+          mastodon-active-user "srijan"
+          mastodon-auth-use-auth-source nil
+          mastodon-tl--highlight-current-toot t
+          epg-pinentry-mode 'loopback
+          )
     )
 #+end_src
 *** Reddit
@@ -3404,18 +3408,20 @@ One alternative can be to have a separate script to copy the required passwords 
     :commands (github-explorer-repo-from-url)
     :init
     ;; (github-explorer (github-explorer-repo-from-url "https://github.com/srijan/emacs-v4"))
-    (sj-browse-url-set-handler-rx
-     'github
-     '((seq line-start "http" (zero-or-one "s") "://github.com/" (one-or-more anychar)))
-     (lambda (url &optional _new-window)
-       (github-explorer (github-explorer-repo-from-url url))))
+    ;;(sj-browse-url-set-handler-rx
+    ;; 'github
+    ;; '((seq line-start "http" (zero-or-one "s") "://github.com/" (one-or-more anychar)))
+    ;; (lambda (url &optional _new-window)
+    ;;   (github-explorer (github-explorer-repo-from-url url))))
     )
     
 #+end_src
 ** Desktop Utilities
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package ready-player)
+  (use-package ready-player
+    :config
+    (setopt ready-player-set-global-bindings nil))
   (when my-linux-p
     (defun sj/default-browser (&optional name)
       "Set the default browser based on the given NAME."
