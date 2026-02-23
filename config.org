@@ -658,7 +658,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :bind (;; C-c bindings in `mode-specific-map'
            ("C-c M-x" . consult-mode-command)
            ("C-c h" . consult-history)
-           ("C-c k" . consult-kmacro)
+           ;; ("C-c k" . consult-kmacro)
            ("C-c M" . consult-man)
            ("C-c I" . consult-info)
            ([remap Info-search] . consult-info)
@@ -737,10 +737,10 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :config
     (consult-customize
      consult-theme :preview-key '(:debounce 0.2 any)
-     consult-ripgrep consult-git-grep consult-grep
+     consult-ripgrep consult-git-grep consult-grep consult-man
      consult-bookmark consult-recent-file consult-xref
-     consult--source-bookmark consult--source-file-register
-     consult--source-recent-file consult--source-project-recent-file
+     consult-source-bookmark consult-source-file-register
+     consult-source-recent-file consult-source-project-recent-file
      ;; :preview-key "M-."
      :preview-key '(:debounce 0.4 any))
     (setq consult-narrow-key "<"))
