@@ -2385,16 +2385,6 @@ One alternative can be to have a separate script to copy the required passwords 
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
 
-  (use-package aidermacs
-    :bind (("C-c M-a" . aidermacs-transient-menu))
-    :custom
-    (aidermacs-default-chat-mode 'architect)
-    (aidermacs-default-model "sonnet")
-    (aidermacs-auto-commits nil)
-    (aidermacs-backend 'vterm)
-    (aidermacs-watch-files t)
-    )
-
   (use-package claudemacs
     :ensure (:host github :repo "cpoile/claudemacs")
     :bind (
@@ -2447,18 +2437,14 @@ One alternative can be to have a separate script to copy the required passwords 
     (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
     (require 'gptel-plus)
     )
-  (use-package acp
-    :ensure (:host github :repo "xenodium/acp.el")
-    :demand t
-    )
-  (use-package shell-maker
-    :demand t)
   (use-package agent-shell
     :ensure (:host github :repo "xenodium/agent-shell")
     :demand t
     :config
     (setq agent-shell-anthropic-authentication
           (agent-shell-anthropic-make-authentication :login t))
+    (setq agent-shell-openai-authentication
+          (agent-shell-openai-make-authentication :login t))
     )
   (use-package gptel-plus
     :ensure (:host github :repo "benthamite/gptel-plus"))
@@ -2479,6 +2465,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
 
   (use-package copilot
+    :disabled
     :if (not my-phone-p)
     :delight
     ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
