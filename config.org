@@ -1161,15 +1161,28 @@ One alternative can be to have a separate script to copy the required passwords 
        (done . "DONE")      ; tasks successfully completed
        (canceled . "CNCL"))) ; tasks that won't be completed
 
+    (org-gtd-capture-templates `(("i" "Inbox" entry (file ,#'org-gtd-inbox-path)
+                                  "* %?\n%i"
+                                  :kill-buffer t)
+                                 ("l" "Inbox with link" entry (file ,#'org-gtd-inbox-path)
+                                  "* %?\n%i\n%a"
+                                  :kill-buffer t)))
+
     ;; Tags
     (org-tag-persistent-alist
-     '((:startgroup)
+     '(;; Domain (mutually exclusive)
+       (:startgroup)
        ("work" . ?w) ("personal" . ?p)
        (:endgroup)
+       ;; GTD Context (mutually exclusive)
        (:startgroup)
        ("@computer" . ?c) ("@phone" . ?P) ("@errands" . ?e)
        ("@office" . ?o) ("@home" . ?h) ("@anywhere" . ?a)
-       (:endgroup)))
+       (:endgroup)
+       ;; Additional (can combine with anything)
+       ("@claude" . ?C)
+       ("ical" . ?I)
+       ("@india" . ?i)))
 
     ;; Areas of Focus (subcategories)
     (org-gtd-areas-of-focus
@@ -1200,16 +1213,44 @@ One alternative can be to have a separate script to copy the required passwords 
       (interactive)
       (find-file "~/ndxrd-uxxs3/org/inbox.org")
       )
+    (defun org-open-gtd ()
+      (interactive)
+      (find-file "~/ndxrd-uxxs3/org/org-gtd-tasks.org")
+      )
     (defun my/org-gtd-maybe-set-tags ()
       "Use as a hook when decorating items after clarifying them."
       (unless (org-gtd-organize-type-member-p '(quick-action knowledge trash))
         (org-set-tags-command)))
+
+    ;; Custom views
+    (defun my-org-gtd-active-projects ()
+      "Show all active projects."
+      (interactive)
+      (org-gtd-view-show
+       '((name . "My Active Projects")
+         (type . active-project))))
+
+    (defun org-gtd-engage-view-spec ()
+      "Return GTD view specification for the engage view.
+  Shows:
+  - Calendar day view (Calendar + Habit items with timestamps for today)
+  - Tickler items due today
+  - Delegated items with check-ins due today
+  - All next actions"
+      `((name . "GTD Engage View")
+        (prefix . (project area-of-focus "—"))
+        (prefix-width . ,org-gtd-prefix-width)
+        (blocks . (((name . "Today's Schedule")
+                    (native . (agenda "" nil)))
+                   ((name . "All actions ready to be executed")
+                    (type . next-action))))))
 
 
     :bind
     (("C-c d" . org-gtd-command-center)
      ("C-c i" . org-capture-inbox)
      ("C-c j" . org-open-inbox)
+     ("C-c k" . org-open-gtd)
      ("C-c l" . org-store-link)
      :map org-gtd-clarify-mode-map
      ("C-c c" . org-gtd-organize)
