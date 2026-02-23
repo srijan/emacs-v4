@@ -2953,11 +2953,69 @@ One alternative can be to have a separate script to copy the required passwords 
       (auth-source-pick-first-password
        :host "work.greyorange.com-jira" :user "credential"))
 
-    ;; Issue fields customizations
+    ;; Issue fields customizations - define custom fields
     (add-to-list 'jira-issues-fields
                  '(:epic-link . ((:path . (fields customfield_10002))
-                                 (:columns . 5)
-                                 (:name . "Epic Link"))))
+                                 (:columns . 12)
+                                 (:name . "Epic Link")
+                                 (:formatter . jira-fmt-issue-key-not-tabulated))))
+    (add-to-list 'jira-issues-fields
+                 '(:gm-program-increment . ((:path . (fields customfield_16603))
+                                            (:columns . 20)
+                                            (:name . "GM Program Increment")
+                                            (:formatter . my/jira-fmt-multiselect))))
+    (add-to-list 'jira-issues-fields
+                 '(:team . ((:path . (fields customfield_11600 name))
+                            (:columns . 15)
+                            (:name . "Team"))))
+    (add-to-list 'jira-issues-fields
+                 '(:product-owner . ((:path . (fields customfield_15446 displayName))
+                                     (:columns . 15)
+                                     (:name . "Product Owner"))))
+    (add-to-list 'jira-issues-fields
+                 '(:story-points . ((:path . (fields customfield_15455))
+                                    (:columns . 5)
+                                    (:name . "Story Points"))))
+    (add-to-list 'jira-issues-fields
+                 '(:weekly-status . ((:path . (fields customfield_16604))
+                                     (:columns . 50)
+                                     (:name . "Weekly Status"))))
+    (add-to-list 'jira-issues-fields
+                 '(:hld-owner . ((:path . (fields customfield_15447 displayName))
+                                 (:columns . 15)
+                                 (:name . "HLD Owner"))))
+
+    ;; Formatter for multi-select fields (returns comma-separated values)
+    (defun my/jira-fmt-multiselect (values)
+      "Format a multi-select field as comma-separated string."
+      (if (and values (or (listp values) (vectorp values)))
+          (mapconcat (lambda (v)
+                       (if (or (listp v) (vectorp v))
+                           (or (alist-get 'value v) (format "%s" v))
+                         (format "%s" v)))
+                     values ", ")
+        (if (stringp values) values "")))
+
+    ;; Add custom fields to the detail view's Team Data section
+    (defun my/jira-detail-add-custom-fields (issue)
+      "Insert custom fields in the Team Data section of jira detail view."
+      (let ((epic-link (jira-detail--issue-fmt issue :epic-link))
+            (gm-pi (jira-detail--issue-fmt issue :gm-program-increment))
+            (team (jira-detail--issue-fmt issue :team))
+            (product-owner (jira-detail--issue-fmt issue :product-owner))
+            (story-points (jira-detail--issue-fmt issue :story-points))
+            (hld-owner (jira-detail--issue-fmt issue :hld-owner))
+            (weekly-status (jira-detail--issue-fmt issue :weekly-status)))
+        (insert (jira-detail--header "Epic Link") (or epic-link "") "\n")
+        (insert (jira-detail--header "GM PI") (or gm-pi "") "\n")
+        (insert (jira-detail--header "Team") (or team "") "\n")
+        (insert (jira-detail--header "Product Owner") (or product-owner "") "\n")
+        (insert (jira-detail--header "HLD Owner") (or hld-owner "") "\n")
+        (insert (jira-detail--header "Story Points") (or story-points "") "\n")))
+    ;;(when (and weekly-status (not (string-empty-p weekly-status)))
+    ;;  (insert "\n" (jira-detail--header "Weekly Status") "\n" weekly-status "\n"))))
+
+    (advice-add 'jira-detail--issue-team :after #'my/jira-detail-add-custom-fields)
 
     (defun sj/jira-visit-issue-at-point ()
       "Visit the jira issue detail page for the jira key under point."
