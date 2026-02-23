@@ -3313,6 +3313,7 @@ One alternative can be to have a separate script to copy the required passwords 
            ("C-c s u" . slack-select-unread-rooms)
            ("C-c s U" . slack-user-select)
            ("C-c s s" . slack-search-from-messages)
+           ("C-c s i" . slack-inbox)
            ("C-c s J" . slack-jump-to-browser)
            ("C-c s j" . slack-jump-to-app)
            ("C-c s e" . slack-insert-emoji)
@@ -3336,10 +3337,12 @@ One alternative can be to have a separate script to copy the required passwords 
                  (("C-c '" . slack-message-send-from-buffer)))
            )
     :config
+    (require 'slack-inbox)
     (setq slack-prefer-current-team t)
     (setq slack-enable-global-mode-string t)
     (setq slack-buffer-function 'switch-to-buffer)
     (setq slack-thread-also-send-to-room nil)
+    (setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
     (slack-register-team
      :name "greyorange"
      :default t
@@ -3353,10 +3356,15 @@ One alternative can be to have a separate script to copy the required passwords 
     )
   ;; (elpaca--configure-remotes (elpaca-get 'slack))
   (use-package alert
+    :demand t
     :commands (alert)
     :init
-    (require 'notifications)
-    (setq alert-default-style 'notifications))
+    (setq alert-default-style 'osx-notifier))
+  (use-package ol-emacs-slack
+    :if (not my-phone-p)
+    :demand t
+    :ensure (:host github :repo "ag91/ol-emacs-slack")
+    )
 
 #+end_src
 *** HackerNews
