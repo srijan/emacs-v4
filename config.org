@@ -1274,7 +1274,16 @@ One alternative can be to have a separate script to copy the required passwords 
     :config
     (global-org-modern-mode 1))
 
-#+end_src
+  (use-package org-to-cal
+    :ensure (:host gitlab :repo "aimebertrand/org-to-cal")
+    :demand t
+    :config
+    (setopt org-to-cal-sync-method 'both)
+    (setopt org-to-cal-target-calendar "Org")
+    (org-to-cal-mode 1)
+    )
+
+    #+end_src
 
 ** COMMENT Org and gtd (custom)
 #+begin_src emacs-lisp :tangle "post-init.el"
