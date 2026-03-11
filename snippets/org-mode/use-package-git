@@ -1,0 +1,9 @@
+# -*- mode: snippet -*-
+# name: use-package-git
+# key: upg
+# --
+
+(use-package $0
+  :ensure (:host github :repo "$1")
+  $2
+)
