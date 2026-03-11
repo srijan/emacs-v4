@@ -2498,6 +2498,8 @@ One alternative can be to have a separate script to copy the required passwords 
                            (my-linux-p "/usr/bin/git")
                            (my-mac-p "/opt/homebrew/bin/git")
                            (t "git"))))
+  (use-package forge
+    :after magit)
 #+end_src
 ** Language Modes
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2615,16 +2617,6 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dockerfile-mode)
   (use-package yaml-mode)
-  (use-package kubernetes
-    :ensure t
-    :commands (kubernetes-overview kubernetes-events)
-    :config
-    (setq kubernetes-poll-frequency 3600
-          kubernetes-redraw-frequency 3600))
-  (use-package kubernetes-evil
-    :disabled
-    :ensure t
-    :after kubernetes)
 #+end_src
 ** mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
