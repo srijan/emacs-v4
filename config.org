@@ -2440,6 +2440,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
     (require 'gptel-plus)
     )
+  (use-package shell-maker :demand t)
   (use-package agent-shell
     :ensure (:host github :repo "xenodium/agent-shell")
     :demand t
@@ -2466,37 +2467,10 @@ One alternative can be to have a separate script to copy the required passwords 
       (gptel-tool-library-load-module module))
     )
 
-
-  (use-package copilot
+  (use-package chatgpt-shell
     :disabled
     :if (not my-phone-p)
-    :delight
-    ;; :straight (:host github :repo "zerolfx/copilot.el" :files ("dist" "*.el"))
-    :ensure t
-    :hook (prog-mode . (lambda ()
-                         (interactive)
-                         (unless (file-remote-p default-directory)
-              		     (copilot-mode))))
-    :custom
-    (copilot-max-char 1000000)
-    :bind (
-           ;; ("C-TAB" . 'copilot-accept-completion-by-word)
-           ;; ("C-<tab>" . 'copilot-accept-completion-by-word)
-           :map copilot-completion-map
-           ("<tab>" . 'copilot-accept-completion)
-           ("TAB" . 'copilot-accept-completion))
-    :config
-    (add-to-list 'copilot-indentation-alist '(prog-mode 2))
-    (add-to-list 'copilot-indentation-alist '(org-mode 2))
-    (add-to-list 'copilot-indentation-alist '(text-mode 2))
-    (add-to-list 'copilot-indentation-alist '(closure-mode 2))
-    (add-to-list 'copilot-indentation-alist '(emacs-lisp-mode 2))
-    (add-to-list 'copilot-indentation-alist '(markdown-mode 2))
-    )
-
-  (use-package chatgpt-shell
-    :if (not my-phone-p)
-    :ensure t
+    ;;:ensure t
     :custom
     ((chatgpt-shell-openai-key
       (lambda ()

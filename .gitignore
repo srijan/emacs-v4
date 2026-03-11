@@ -5,3 +5,4 @@ post-early-init.el
 pre-init.el
 post-init.el
 .aider*
+.agent-shell/
