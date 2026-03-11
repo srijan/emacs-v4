@@ -1091,10 +1091,13 @@ One alternative can be to have a separate script to copy the required passwords 
 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package auth-source-1password
+    :disabled
     :if (not my-phone-p)
     :demand t
     :config
     (auth-source-1password-enable))
+  (setopt auth-sources '("~/.authinfo.gpg"))
+  (setopt epg-pinentry-mode 'loopback)
 #+end_src
 ** Org and gtd (org-gtd v4)
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -3387,7 +3390,6 @@ One alternative can be to have a separate script to copy the required passwords 
           mastodon-active-user "srijan"
           mastodon-auth-use-auth-source nil
           mastodon-tl--highlight-current-toot t
-          epg-pinentry-mode 'loopback
           )
     )
 #+end_src
