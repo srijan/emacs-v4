@@ -3276,6 +3276,7 @@ One alternative can be to have a separate script to copy the required passwords 
            ("C-c s E" . slack-message-edit)
            ("C-c s r" . slack-message-add-reaction)
            ("C-c s t" . slack-all-threads)
+           ("C-c s T" . slack-thread-show-or-create)
            ("C-c s g" . slack-message-redisplay)
            ("C-c s G" . slack-conversations-list-update-quick)
            ("C-c s q" . slack-quote-and-reply)
@@ -3304,10 +3305,10 @@ One alternative can be to have a separate script to copy the required passwords 
      :default t
      :modeline-enabled t
      :token (auth-source-pick-first-password
-             :host "work-slack-tokens"
+             :host "work-slack"
              :user "token")
      :cookie (auth-source-pick-first-password
-              :host "work-slack-tokens"
+              :host "work-slack"
               :user "cookie"))
     )
   ;; (elpaca--configure-remotes (elpaca-get 'slack))
