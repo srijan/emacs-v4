@@ -491,6 +491,7 @@ TODO: Need to evaluate how much speedup this gives
     ;; (olivetti-fringe '(:background "#e5e5e5"))
     )
   (use-package spacious-padding
+    :disabled
     :demand t
     :config
     (setq spacious-padding-subtle-frame-lines 
@@ -895,8 +896,49 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 #+end_src
 ** Modeline
 #+begin_src emacs-lisp :tangle "post-init.el"
+  ;; (use-package moody
+  ;;   :demand t
+  ;;   :config
+  ;;   (moody-replace-mode-line-front-space)
+  ;;   (moody-replace-mode-line-buffer-identification)
+  ;;   (moody-replace-vc-mode))
+  (use-package moody
+    :demand t
+    :config
+    (setq x-underline-at-descent-line t)
+
+    (setq-default mode-line-format
+                  '(" "
+                    mode-line-front-space
+                    mode-line-client
+                    mode-line-frame-identification
+                    mode-line-buffer-identification
+                    (:eval
+                     (when (eq major-mode 'image-mode)
+                       ;; imagemagick alternative (also shows type and file size).
+                       ;; (process-lines "identify" "-format" "[%m %wx%h %b]" (buffer-file-name))
+                       (let ((size (image-size (create-image (buffer-file-name) nil nil :scale 1.0) t)))
+                         (list (format "%dx%d" (car size) (cdr size))))))
+                    " "
+                    mode-line-position
+                    (vc-mode vc-mode)
+                    (multiple-cursors-mode mc/mode-line)
+                    " " mode-line-modes
+                    mode-line-misc-info
+                    mode-line-end-spaces))
+
+    (setq global-mode-string (remove 'display-time-string global-mode-string))
+
+    (moody-replace-mode-line-buffer-identification)
+    (moody-replace-vc-mode))
+  (use-package minions
+    :demand t
+    :config
+    (minions-mode +1))
+
   (use-package delight
-    :demand t)
+    :demand t
+    :disabled)
   (use-package emacs
     :ensure nil
     :delight
@@ -911,6 +953,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   ;; (use-package nerd-icons)
   (use-package doom-modeline
     :ensure (:host github :repo "seagle0128/doom-modeline")
+    :disabled
     :demand
     :init
     (doom-modeline-mode 1)
