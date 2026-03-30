@@ -3009,7 +3009,8 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure nil
     :custom
     (gnus-inhibit-mime-unbuttonizing t)
-    (mm-discouraged-alternatives '("text/html" "text/richtext")))
+    (mm-discouraged-alternatives 'nil))
+  ;;'("text/html" "text/richtext")
 
   (when my-mac-p
     (add-to-list
@@ -3032,6 +3033,35 @@ One alternative can be to have a separate script to copy the required passwords 
     :bind (("C-c m" . mu4e))
     :autoload mu4e-update-index
     :config
+    (defun bb/mu4e-header-layout (&optional for-consult)
+      "Calculate header widths based on headers window width (or frame width as fallback).
+     If FOR-CONSULT is non-nil, use :date instead of :human-date."
+      (let* ((width (or (when-let ((win (get-buffer-window "*mu4e-headers*")))
+                          (window-width win))
+                        (frame-width)))
+             (from-width 30)
+             (maildir-width 12)
+             (date-width 12)
+             ;; With precise alignment, :align-to uses absolute positions so
+             ;; separators and mark-fringe don't consume extra width
+             (fixed-space (+ from-width maildir-width date-width))
+             (subject-width (max 20 (- width fixed-space)))
+             (date-field (if for-consult :date :human-date)))
+        `((:from       . ,from-width)
+          (:subject    . ,subject-width)
+          (:short-maildir . ,maildir-width)
+     	    (,date-field . ,date-width))))
+    (add-to-list 'mu4e-header-info-custom
+                 '(:short-maildir . (
+                                     :name "Short Maildir"
+                                     :shortname "Folder"
+                                     :help "Maildir without account prefix"
+                                     :function
+                                     (lambda (msg)
+        	                             (let ((maildir (mu4e-message-field msg :maildir)))
+        	                               (if maildir
+        		                               (replace-regexp-in-string "^/?fastmail/?" "" maildir)
+        		                             ""))))))
     (setq
      ;; mu4e-use-maildirs-extension nil
      mu4e-view-prefer-html nil
@@ -3044,20 +3074,64 @@ One alternative can be to have a separate script to copy the required passwords 
      mu4e-compose-format-flowed t
      mu4e-use-fancy-chars t
      mu4e-headers-visible-flags '(draft flagged new passed replied trashed attach encrypted signed)
-     mu4e-headers-fields '((:human-date . 12)
-                           (:flags . 6)
-                           (:from-or-to . 32)
-                           (:subject))
      mu4e-headers-date-format "%Y-%m-%d"
      mu4e-headers-from-or-to-prefix '("" . "To: ")
      mu4e-headers-leave-behavior 'apply
      mu4e-hide-index-messages t
      message-kill-buffer-on-exit t
-     shr-color-visible-luminance-min 80
-     mu4e-index-cleanup nil ;; set to nil if indexing is slow
-     mu4e-index-lazy-check t
+     ;; shr-color-visible-luminance-min 80
+     mu4e-index-cleanup t ;; set to nil if indexing is slow
+     mu4e-index-lazy-check nil
+     mu4e-split-view 'vertical
+     mu4e-headers-visible-columns 100
+     mu4e-headers-precise-alignment t
      )
 
+    (defun bb/mu4e-update-header-fields ()
+      "Recalculate mu4e-headers-fields based on current frame width."
+      (setq mu4e-headers-fields (bb/mu4e-header-layout)))
+
+    ;; Recalculate before each new headers buffer
+    (add-hook 'mu4e-headers-mode-hook #'bb/mu4e-update-header-fields)
+
+    ;; Make header-line labels use :align-to so they match precise-alignment data columns.
+    ;; Header-line :align-to is relative to the window edge (includes fringe area),
+    ;; but buffer :align-to is relative to the text area (after fringe), so we add
+    ;; the fringe offset to match.
+    (define-advice mu4e~header-line-format (:filter-return (result) precise-align)
+      "Use :align-to display properties for precise header-line column alignment."
+      (when (consp result)
+        (let ((cum-width 0)
+              (fringe-offset (fringe-columns 'left t)))
+          ;; Replace prefix with :align-to matching the mark fringe position
+          (setf (car result)
+                (propertize " " 'display
+                            `(space :align-to ,(1- (+ mu4e--mark-fringe-len fringe-offset)))))
+          (setf (cdr result)
+                (cl-loop for (_field . width) in mu4e-headers-fields
+                         for label in (cdr result)
+                         collect (progn
+                                   (setq cum-width (+ cum-width (or width 0)))
+                                   (concat (string-trim-right label)
+                                           (propertize " " 'display
+                                                       `(space :align-to ,(+ cum-width fringe-offset)))))))))
+      result)
+
+    ;; Recalculate on any window size change (frame resize, split open/close).
+    ;; NOTE: mu4e-search-rerun applies pending marks. To avoid that, we could
+    ;; instead walk the buffer with mu4e-headers-for-each and re-render each
+    ;; line in-place using mu4e~message-header-line (msg is stored as a text
+    ;; property on each line).
+    (defun bb/mu4e-resize-handler (_frame)
+      (when-let ((win (get-buffer-window "*mu4e-headers*")))
+        (let ((old-fields mu4e-headers-fields)
+              (new-fields (bb/mu4e-header-layout)))
+          (unless (equal old-fields new-fields)
+            (setq mu4e-headers-fields new-fields)
+            (with-selected-window win
+              (mu4e-search-rerun))))))
+
+    (add-to-list 'window-size-change-functions #'bb/mu4e-resize-handler)
 
     (defun my-mu4e-refile-folder-fun (msg)
       "Set the refile folder for MSG."
@@ -3090,7 +3164,17 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; don't save message to Sent Messages, IMAP takes care of this
     (setq mu4e-sent-messages-behavior 'sent)
 
+    (add-hook 'mu4e-headers-mode-hook (lambda () (visual-line-mode -1)))
+
     (add-hook 'mu4e-view-mode-hook #'visual-line-mode)
+
+    (defun bb/mu4e-view-force-clean-html ()
+      "Render HTML using current theme colors by disabling SHR colors."
+      (interactive)
+      (require 'shr)
+      (let ((shr-use-colors nil))
+        (mu4e-view-refresh))
+      (message "HTML colors stripped."))
 
     ;; <tab> to navigate to links, <RET> to open them in browser
     (add-hook 'mu4e-view-mode-hook
@@ -3227,12 +3311,12 @@ One alternative can be to have a separate script to copy the required passwords 
           org-msg-convert-citation t
           org-msg-signature "
 
-       ,#+begin_signature
-       --
-       ,*Srijan Choudhary*
-       ,#+end_signature"
-    (org-msg-mode)
-    )
+          ,#+begin_signature
+          --
+          ,*Srijan Choudhary*
+          ,#+end_signature"
+          (org-msg-mode)
+          ))
 
   (use-package smtpmail
     :if (not my-phone-p)
