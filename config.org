@@ -1472,6 +1472,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-insert-heading-respect-content t)
     (org-hide-emphasis-markers t)
     (org-pretty-entities t)
+    (org-use-sub-superscripts '{})
     (org-agenda-tags-column 0)
     (org-log-into-drawer t)
     (org-agenda-window-setup 'only-window)
@@ -1494,6 +1495,27 @@ One alternative can be to have a separate script to copy the required passwords 
     (run-with-timer 1 60 'current-clock-time-to-file)
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    (defun my-org-demote-title-to-body ()
+      "Move the current heading's title into the body, below the metadata.
+  Point returns to the heading for editing."
+      (interactive)
+      (org-back-to-heading t)
+      (let* ((element (org-element-at-point))
+             (title (org-element-property :raw-value element)))
+        (org-edit-headline "")
+        (save-excursion
+          (org-end-of-meta-data t)
+          (insert title "\n"))
+        (org-beginning-of-line)))
+    (defun my-org-shift-return ()
+      "On a heading, demote title to body. In a table, copy down. Otherwise, newline."
+      (interactive)
+      (cond
+       ((org-at-heading-p) (my-org-demote-title-to-body))
+       ((org-at-table-p) (org-table-copy-down 1))
+       (t (org-return))))
+    (define-key org-mode-map (kbd "S-<return>") #'my-org-shift-return)
     )
 
   (use-package org-edna
@@ -1591,11 +1613,11 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (defun org-gtd-engage-view-spec ()
       "Return GTD view specification for the engage view.
-  Shows:
-  - Calendar day view (Calendar + Habit items with timestamps for today)
-  - Tickler items due today
-  - Delegated items with check-ins due today
-  - All next actions"
+    Shows:
+    - Calendar day view (Calendar + Habit items with timestamps for today)
+    - Tickler items due today
+    - Delegated items with check-ins due today
+    - All next actions"
       `((name . "GTD Engage View")
         (prefix . (project area-of-focus "—"))
         (prefix-width . ,org-gtd-prefix-width)
@@ -1604,6 +1626,8 @@ One alternative can be to have a separate script to copy the required passwords 
                    ((name . "All actions ready to be executed")
                     (type . next-action))))))
 
+    (transient-append-suffix 'org-gtd-command-center "A"
+      '("$" "Archive item at point" org-gtd-archive-item-at-point))
 
     :bind
     (("C-c d" . org-gtd-command-center)
@@ -1632,6 +1656,11 @@ One alternative can be to have a separate script to copy the required passwords 
     :demand t
     :config
     (global-org-modern-mode 1))
+
+  (use-package org-hide-drawers
+    :demand t
+    :after org
+    :config (org-hide-drawers-mode 1))
 
   (use-package org-to-cal
     :ensure (:host gitlab :repo "aimebertrand/org-to-cal")
