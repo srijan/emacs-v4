@@ -1024,8 +1024,13 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
               (file  (buffer-file-name buf)))
           (cond
            ((or (string-prefix-p "*mu4e" bname)
+                (string-prefix-p "*notmuch" bname)
+
                 (memq mode '(mu4e-main-mode mu4e-headers-mode
-                                            mu4e-view-mode mu4e-compose-mode)))
+                                            mu4e-view-mode mu4e-compose-mode
+                                            notmuch-hello-mode notmuch-search-mode
+                                            notmuch-show-mode notmuch-tree-mode
+                                            notmuch-message-mode)))
             "Email")
            ((or (equal bname "*Org Agenda*")
                 (and file
@@ -1057,7 +1062,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       (my/tab-bar-find-or-create "Agenda")
       (apply orig-fn args))
 
-    (advice-add 'mu4e :around #'my/mu4e-in-tab)
+    (advice-add 'mu4e     :around #'my/mu4e-in-tab)
+    (advice-add 'notmuch  :around #'my/mu4e-in-tab)
     (advice-add 'org-agenda :around #'my/org-agenda-in-tab)
 
     ;; Auto-switch tab when visiting a buffer that belongs to another tab
@@ -1173,7 +1179,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       (my/tab-bar-find-or-create "GTD")
       (apply orig-fn args))
 
-    (advice-add 'mu4e :around #'my/mu4e-in-tab)
+    (advice-add 'mu4e    :around #'my/mu4e-in-tab)
+    (advice-add 'notmuch :around #'my/mu4e-in-tab)
     (advice-add 'org-agenda :around #'my/org-agenda-in-tab)
 
     (defun my/org-file-in-gtd-p (file)
@@ -1205,15 +1212,21 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
               (file  (buffer-file-name buf)))
           (cond
            ((or (string-prefix-p "*mu4e" bname)
+                (string-prefix-p "*notmuch" bname)
+                (string-prefix-p "*gmi-sync" bname)
                 (memq mode '(mu4e-main-mode mu4e-headers-mode
-                                            mu4e-view-mode mu4e-compose-mode)))
+                                            mu4e-view-mode mu4e-compose-mode
+                                            notmuch-hello-mode notmuch-search-mode
+                                            notmuch-show-mode notmuch-tree-mode
+                                            notmuch-message-mode)))
            "Email")
            ((or (equal bname "*Org Agenda*")
                 (my/org-file-in-gtd-p file))
             "GTD")
-           ((and file
-                 (when-let* ((proj (project-current nil (file-name-directory file))))
-                   (my/tabspaces-project-tab-name (project-root proj)))))))))
+           ((when-let* ((dir (or (and file (file-name-directory file))
+                                 (buffer-local-value 'default-directory buf)))
+                        (proj (project-current nil dir)))
+              (my/tabspaces-project-tab-name (project-root proj))))))))
 
     (defun my/server-switch-buffer-to-tab (orig-fn &rest args)
       "Route `server-switch-buffer' opens to the appropriate tab."
