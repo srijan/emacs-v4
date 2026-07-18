@@ -1194,9 +1194,9 @@ linked to the workspace without re-initialising its contents."
     (dirvish-quick-access-entries ; It's a custom option, `setq' won't work
      '(("h" "~/"                          "Home")
        ("d" "~/Downloads/"                "Downloads")
-       ("n" "~/Sync/notes/"        "Notes")
-       ("o" "~/Sync/org/"          "GTD Org")
-       ("c" "~/.emacs.d/"         "Config")))
+       ("n" "~/Sync/docs/notes/"   "Notes")
+       ("o" "~/Sync/docs/org/"     "GTD Org")
+       ("c" "~/.emacs.d/"                 "Config")))
     :config
     ;; (dirvish-peek-mode) ; Preview files in minibuffer
     ;; (dirvish-side-follow-mode) ; similar to `treemacs-follow-mode'
@@ -1462,7 +1462,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
 
     :config
-    (setopt org-gtd-directory "~/Sync/org/")
+    (setopt org-gtd-directory "~/Sync/docs/org/")
     (setopt org-agenda-files (list org-gtd-directory))
 
     (defun org-capture-inbox ()
@@ -1476,11 +1476,11 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (defun org-open-inbox ()
       (interactive)
-      (find-file "~/Sync/org/inbox.org")
+      (find-file "~/Sync/docs/org/inbox.org")
       )
     (defun org-open-gtd ()
       (interactive)
-      (find-file "~/Sync/org/org-gtd-tasks.org")
+      (find-file "~/Sync/docs/org/org-gtd-tasks.org")
       )
     (defun my/org-gtd-maybe-set-tags ()
       "Use as a hook when decorating items after clarifying them."
@@ -1599,7 +1599,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :config
 
     ;; Files
-    (setopt org-directory "~/Sync/org")
+    (setopt org-directory "~/Sync/docs/org")
     (setopt org-agenda-files (list "inbox.org" "calendar.org" "tickler.org"
                                    "personal.org" "work.org"))
 
@@ -1619,7 +1619,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (defun org-open-inbox ()
       (interactive)
-      (find-file "~/Sync/org/inbox.org")
+      (find-file "~/Sync/docs/org/inbox.org")
       )
 
     ;; Use full window for org-capture
@@ -1857,7 +1857,7 @@ One alternative can be to have a separate script to copy the required passwords 
       (org-capture nil "@"))
     (defun org-open-inbox ()
       (interactive)
-      (find-file "~/Sync/org/inbox.org")
+      (find-file "~/Sync/docs/org/inbox.org")
       )
     :bind
     ("C-c i" . org-capture-inbox)
@@ -1912,7 +1912,7 @@ One alternative can be to have a separate script to copy the required passwords 
                                    "Productivity" "Personal Development" "Personal Services"
                                    "Family" "Health" "Finances"))
     :custom
-    (org-gtd-directory "~/Sync/org/")
+    (org-gtd-directory "~/Sync/docs/org/")
     (org-edna-use-inheritance t)
     (org-gtd-organize-hooks '(org-gtd-areas-of-focus--set my/org-gtd-maybe-set-tags my/org-gtd-maybe-set-effort))
     (org-gtd-refile-to-any-target nil)
@@ -2266,7 +2266,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :bind (("C-c n ;" . howm-menu))
     :init
     (require 'howm-org)
-    (setopt howm-directory "~/Sync/notes")
+    (setopt howm-directory "~/Sync/docs/notes")
     (setopt howm-follow-theme t)
     (setopt howm-file-name-format "%Y%m%dT%H%M%S.org")
     (setopt howm-view-title-header "#+title:")
@@ -2308,7 +2308,7 @@ One alternative can be to have a separate script to copy the required passwords 
 *** Denote
 #+name: denote_config
 #+begin_src emacs-lisp
-  (setq my-notes-dir           (expand-file-name     "~/Sync/notes/"))
+  (setq my-notes-dir           (expand-file-name     "~/Sync/docs/notes/"))
   (setq my-journals-dir        (concat my-notes-dir  "journals"))
   (setq my-zettels-dir         (concat my-notes-dir  "main"))
   (setq my-templates-dir       (concat my-notes-dir  "templates"))
@@ -2419,12 +2419,12 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<denote_config>>
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/notes/denote_config.el" :epilogue (format-time-string ";; Last generated on %c")
+#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :epilogue (format-time-string ";; Last generated on %c")
   ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
   ;; This file has been generated from my emacs's config.org file and is for
   ;; reference purposes only. DO NOT EDIT.
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/notes/denote_config.el" :noweb yes
+#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :noweb yes
   <<denote_config>>
 #+end_src
 *** Literature Notes from Koreader
@@ -2474,7 +2474,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<koreader_config>>
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/notes/denote_config.el" :noweb yes
+#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :noweb yes
   <<koreader_config>>
 #+end_src
 ** Ediff
