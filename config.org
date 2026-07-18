@@ -3909,9 +3909,84 @@ One alternative can be to have a separate script to copy the required passwords 
 
   (setopt browse-url-browser-function 'sj-browse-url)
 #+end_src
+*** Linkding
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defcustom sj-linkding-url nil
+    "Base URL of your Linkding instance, e.g. \"https://links.example.com\"."
+    :type 'string
+    :group 'sj-browse)
+
+  (defcustom sj-linkding-token nil
+    "Linkding REST API token."
+    :type 'string
+    :group 'sj-browse)
+
+  (defvar sj-linkding--tags-cache nil
+    "Cached list of tag name strings fetched from Linkding.")
+
+  (defun sj-linkding--fetch-tags ()
+    "Fetch all tags from Linkding, update `sj-linkding--tags-cache'."
+    (unless (and sj-linkding-url sj-linkding-token)
+      (user-error "Set sj-linkding-url and sj-linkding-token first"))
+    (let* ((endpoint (concat (string-trim-right sj-linkding-url "/")
+                             "/api/tags/?limit=1000"))
+           (url-request-extra-headers
+            `(("Authorization" . ,(concat "Token " sj-linkding-token))))
+           (buf (url-retrieve-synchronously endpoint t)))
+      (when buf
+        (with-current-buffer buf
+          (goto-char (point-min))
+          (re-search-forward "^$" nil t)
+          (let* ((json-object-type 'alist)
+                 (data (json-read)))
+            (setq sj-linkding--tags-cache
+                  (mapcar (lambda (tag) (alist-get 'name tag))
+                          (alist-get 'results data)))))
+        (kill-buffer buf))))
+
+  (defun sj-linkding-tags (&optional refresh)
+    "Return cached Linkding tags, fetching from server if cache is empty or REFRESH."
+    (when (or refresh (null sj-linkding--tags-cache))
+      (sj-linkding--fetch-tags))
+    sj-linkding--tags-cache)
+
+  (defun sj-linkding-add-bookmark (url title &optional tags description)
+    "Save URL with TITLE to Linkding. TAGS is a list of strings."
+    (unless (and sj-linkding-url sj-linkding-token)
+      (user-error "Set sj-linkding-url and sj-linkding-token first"))
+    (let* ((endpoint (concat (string-trim-right sj-linkding-url "/")
+                             "/api/bookmarks/"))
+           (payload (json-encode `((url . ,url)
+                                   (title . ,(or title ""))
+                                   (description . ,(or description ""))
+                                   (tag_names . ,(or tags [])))))
+           (url-request-method "POST")
+           (url-request-extra-headers
+            `(("Content-Type" . "application/json")
+              ("Authorization" . ,(concat "Token " sj-linkding-token))))
+           (url-request-data (encode-coding-string payload 'utf-8)))
+      (url-retrieve endpoint
+                    (lambda (status)
+                      (if (plist-get status :error)
+                          (message "Linkding: failed to save bookmark")
+                        (message "Linkding: saved <%s>" url)))
+                    nil t)))
+
+  (defun sj-eww-linkding-bookmark (&optional refresh-tags)
+    "Save current EWW page to Linkding, with tag completion.
+With prefix arg, refresh the tag cache first."
+    (interactive "P")
+    (unless (derived-mode-p 'eww-mode)
+      (user-error "Not in an EWW buffer"))
+    (let* ((url (eww-current-url))
+           (title (plist-get eww-data :title))
+           (tags (completing-read-multiple "Tags: " (sj-linkding-tags refresh-tags))))
+      (sj-linkding-add-bookmark url title (vconcat tags))))
+#+end_src
 *** Feeds
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package elfeed
+    ;;:ensure (:host github :repo "emacs-elfeed/elfeed")
     :custom
     (elfeed-use-curl t)
     (elfeed-log-level 'debug)
@@ -4005,10 +4080,10 @@ One alternative can be to have a separate script to copy the required passwords 
     )
   (use-package elfeed-protocol
     :custom
-    (elfeed-protocol-feeds '(("fever+https://srijan@miniflux.example.net"
-                              :api-url "https://miniflux.example.net/fever/"
-                              :password (lambda ()
-                                          (auth-source-pick-first-password :host "miniflux.example.net" :user "fever")))))
+    (elfeed-feeds '(("fever+https://srijan@miniflux.example.net"
+                     :api-url "https://miniflux.example.net/fever/"
+                     :password (lambda ()
+                                 (auth-source-pick-first-password :host "miniflux.example.net" :user "fever")))))
     (elfeed-protocol-enabled-protocols '(fever))
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
