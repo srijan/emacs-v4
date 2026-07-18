@@ -2951,7 +2951,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure (:host github :repo "manzaltu/claude-code-ide.el")
     :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
     :custom
-    (claude-code-ide-terminal-backend 'vterm)
+    (claude-code-ide-terminal-backend 'ghostel)
     (claude-code-ide-use-ide-diff nil)
     :config
     (claude-code-ide-emacs-tools-setup))
