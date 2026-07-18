@@ -3652,50 +3652,50 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
     :demand t
     :config
-    (setq jira-base-url "https://work.acme.example/jira")
+    (setq jira-base-url "https://work.atlassian.example")
     (setq jira-username "you@work.example")
-    (setq jira-token-is-personal-access-token t)
-    (setq jira-api-version 2)
-    (setq jira-issues-table-fields
-          '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
+    (setq jira-token-is-personal-access-token nil)
+    (setq jira-api-version 3)
+    ;; (setq jira-issues-table-fields
+    ;;       '(:key :issue-type-name :status-name :reporter-name :assignee-name :components :labels :summary))
     (setq jira-debug nil)
     (setq jira-detail-show-announcements nil)
 
     (defun jira-api--token ()
       (auth-source-pick-first-password
-       :host "work.acme.example-jira" :user "credential"))
+       :host "work-jira" :user "token"))
 
     ;; Issue fields customizations - define custom fields
-    (add-to-list 'jira-issues-fields
-                 '(:epic-link . ((:path . (fields customfield_10002))
-                                 (:columns . 12)
-                                 (:name . "Epic Link")
-                                 (:formatter . jira-fmt-issue-key-not-tabulated))))
-    (add-to-list 'jira-issues-fields
-                 '(:gm-program-increment . ((:path . (fields customfield_16603))
-                                            (:columns . 20)
-                                            (:name . "GM Program Increment")
-                                            (:formatter . my/jira-fmt-multiselect))))
-    (add-to-list 'jira-issues-fields
-                 '(:team . ((:path . (fields customfield_11600 name))
-                            (:columns . 15)
-                            (:name . "Team"))))
-    (add-to-list 'jira-issues-fields
-                 '(:product-owner . ((:path . (fields customfield_15446 displayName))
-                                     (:columns . 15)
-                                     (:name . "Product Owner"))))
-    (add-to-list 'jira-issues-fields
-                 '(:story-points . ((:path . (fields customfield_15455))
-                                    (:columns . 5)
-                                    (:name . "Story Points"))))
-    (add-to-list 'jira-issues-fields
-                 '(:weekly-status . ((:path . (fields customfield_16604))
-                                     (:columns . 50)
-                                     (:name . "Weekly Status"))))
-    (add-to-list 'jira-issues-fields
-                 '(:hld-owner . ((:path . (fields customfield_15447 displayName))
-                                 (:columns . 15)
-                                 (:name . "HLD Owner"))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:epic-link . ((:path . (fields customfield_10002))
+    ;;                              (:columns . 12)
+    ;;                              (:name . "Epic Link")
+    ;;                              (:formatter . jira-fmt-issue-key-not-tabulated))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:gm-program-increment . ((:path . (fields customfield_16603))
+    ;;                                         (:columns . 20)
+    ;;                                         (:name . "GM Program Increment")
+    ;;                                         (:formatter . my/jira-fmt-multiselect))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:team . ((:path . (fields customfield_11600 name))
+    ;;                         (:columns . 15)
+    ;;                         (:name . "Team"))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:product-owner . ((:path . (fields customfield_15446 displayName))
+    ;;                                  (:columns . 15)
+    ;;                                  (:name . "Product Owner"))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:story-points . ((:path . (fields customfield_15455))
+    ;;                                 (:columns . 5)
+    ;;                                 (:name . "Story Points"))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:weekly-status . ((:path . (fields customfield_16604))
+    ;;                                  (:columns . 50)
+    ;;                                  (:name . "Weekly Status"))))
+    ;; (add-to-list 'jira-issues-fields
+    ;;              '(:hld-owner . ((:path . (fields customfield_15447 displayName))
+    ;;                              (:columns . 15)
+    ;;                              (:name . "HLD Owner"))))
 
     ;; Formatter for multi-select fields (returns comma-separated values)
     (defun my/jira-fmt-multiselect (values)
@@ -3725,9 +3725,9 @@ One alternative can be to have a separate script to copy the required passwords 
         (insert (jira-detail--header "HLD Owner") (or hld-owner "") "\n")
         (insert (jira-detail--header "Story Points") (or story-points "") "\n")))
     ;;(when (and weekly-status (not (string-empty-p weekly-status)))
-    ;;  (insert "\n" (jira-detail--header "Weekly Status") "\n" weekly-status "\n"))))
+    ;;  (insert "\n" (jira-detail--header "Weekly Status") "\n" weekly-status "\n"))
 
-    (advice-add 'jira-detail--issue-team :after #'my/jira-detail-add-custom-fields)
+    ;; (advice-add 'jira-detail--issue-team :after #'my/jira-detail-add-custom-fields)
 
     ;; Show child issues for Epics (before comments section)
     (defun my/jira-detail-show-epic-children (key)
@@ -3777,10 +3777,10 @@ One alternative can be to have a separate script to copy the required passwords 
                                           (jira-fmt-issue-key-not-tabulated child-key)
                                           (jira-fmt-issue-status status)
                                           (or summary "")))))))
-                  (insert "\n")))))))
+                  (insert "\n"))))))))
 
     ;; Hook to fetch epic children before comments (guarantees ordering)
-    (advice-add 'jira-detail--show-comments :before #'my/jira-detail-show-epic-children)
+    ;; (advice-add 'jira-detail--show-comments :before #'my/jira-detail-show-epic-children)
 
     ;; Scroll to top after comments are inserted (last async operation)
     (defun my/jira-detail-scroll-to-top (key _comments)
@@ -3792,7 +3792,7 @@ One alternative can be to have a separate script to copy the required passwords 
           (set-window-point win 1)
           (set-window-start win 1))))
 
-    (advice-add 'jira-detail--comments :after #'my/jira-detail-scroll-to-top)
+    ;; (advice-add 'jira-detail--comments :after #'my/jira-detail-scroll-to-top)
 
     (defun sj/jira-visit-issue-at-point ()
       "Visit the jira issue detail page for the jira key under point."
@@ -3838,7 +3838,7 @@ One alternative can be to have a separate script to copy the required passwords 
       (add-to-list 'embark-keymap-alist '(jira-key . embark-jira-key-map)))
     )
 
-#+end_src
+    #+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
