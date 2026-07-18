@@ -621,26 +621,32 @@ from the Phone block via =material-pbm-icons= (see below). Design:
 
   ;;;; The icon/command grid
   (defconst android-support-global-tool-bar-items
-    '(("close-outline" keyboard-quit)
-      ("plus-circle-multiple-outline" universal-argument)
-      ("file-replace-outline" consult-buffer switch-to-buffer)
-      ("arrow-u-left-top" undo)
+    ;; Grouped for a single-row layout: arrows, then edit/buffer actions,
+    ;; then quit + prefix/chord keys, then the six numbered slots.
+    '(;; navigation (hjkl order)
+      ("arrow-left" backward-char)
+      ("arrow-down" next-line)
       ("arrow-up" previous-line)
+      ("arrow-right" forward-char)
+      ;; edit / buffer
+      ("arrow-u-left-top" undo)
+      ("arrow-collapse-right" indent-for-tab-command)
       ("content-save-outline" android-support-save-buffer save-buffer)
+      ("file-replace-outline" consult-buffer switch-to-buffer)
+      ;; quit + prefix/chord keys
+      ("close-outline" keyboard-quit)
+      ("plus-circle-multiple-outline" universal-argument)
+      ("circle-multiple-outline" execute-extended-command)
+      ("close-circle-multiple-outline" exchange-point-and-mark)
+      ("menu" imenu)
+      ("magnify" isearch-forward)
+      ;; numbered quick-command slots 1-6
       ("numeric-1-circle-outline" android-support-global-tool-bar-custom-command-1)
       ("numeric-2-circle-outline" android-support-global-tool-bar-custom-command-2)
       ("numeric-3-circle-outline" android-support-global-tool-bar-custom-command-3)
-      ("menu" imenu)
-      ("arrow-collapse-right" indent-for-tab-command)
-      ("circle-multiple-outline" execute-extended-command)
-      ("close-circle-multiple-outline" exchange-point-and-mark)
-      ("arrow-left" backward-char)
-      ("arrow-down" next-line)
-      ("arrow-right" forward-char)
       ("numeric-4-circle-outline" android-support-global-tool-bar-custom-command-4)
       ("numeric-5-circle-outline" android-support-global-tool-bar-custom-command-5)
-      ("numeric-6-circle-outline" android-support-global-tool-bar-custom-command-6)
-      ("magnify" isearch-forward))
+      ("numeric-6-circle-outline" android-support-global-tool-bar-custom-command-6))
     "List of (ICON COMMAND [KEY]) specs for the global tool bar.")
 
   (defun android-support-global-tool-bar-setup ()
