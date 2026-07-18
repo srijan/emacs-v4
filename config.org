@@ -153,7 +153,11 @@ This will generate a header at the top of the tangled file to indicate it is gen
   (defvar my-mac-p (eq system-type 'darwin))
   (defvar my-phone-p (not (null (getenv "ANDROID_ROOT")))
     "If non-nil, GNU Emacs is running on Termux.")
-  (when my-phone-p (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
+  ;; TLS 1.3 downgrade is an old Termux GnuTLS workaround; the native Android
+  ;; port bundles a modern GnuTLS, so scope it to Termux only (TERMUX_VERSION is
+  ;; set only under Termux, not the native port).
+  (when (getenv "TERMUX_VERSION")
+    (setq gnutls-algorithm-priority "NORMAL:-VERS-TLS1.3"))
   (when my-mac-p (setopt server-use-tcp t))
   (server-start)
 #+end_src
@@ -519,8 +523,11 @@ TODO: Need to evaluate how much speedup this gives
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-phone-p
     (load-theme 'modus-operandi-tinted t)
-    (set-frame-font "Aporetic Sans Mono-17" nil t)
-    (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17"))
+    ;; Guard the font: `set-frame-font' signals an error if the family is not
+    ;; installed (likely on Android), which would abort the rest of this block.
+    (when (find-font (font-spec :name "Aporetic Sans Mono"))
+      (set-frame-font "Aporetic Sans Mono-17" nil t)
+      (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17")))
     (tool-bar-mode 1)
     ;; (modifier-bar-mode 1)
     (setopt tool-bar-position 'top)
