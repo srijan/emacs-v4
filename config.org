@@ -633,8 +633,9 @@ from the Phone block via =material-pbm-icons= (see below). Design:
       ("arrow-collapse-right" indent-for-tab-command)
       ("content-save-outline" android-support-save-buffer save-buffer)
       ("file-replace-outline" consult-buffer switch-to-buffer)
-      ;; quit + prefix/chord keys
+      ;; quit, direct M-x, and prefix/chord keys
       ("close-outline" keyboard-quit)
+      ("console" execute-extended-command tool-bar-mx) ; one-tap M-x
       ("plus-circle-multiple-outline" universal-argument)
       ("circle-multiple-outline" execute-extended-command)
       ("close-circle-multiple-outline" exchange-point-and-mark)
