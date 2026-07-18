@@ -4130,7 +4130,7 @@ With prefix arg, refresh the tag cache first."
     (setq slack-enable-global-mode-string t)
     (setq slack-buffer-function 'switch-to-buffer)
     (setq slack-thread-also-send-to-room nil)
-    (setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
+    ;;(setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
     (slack-register-team
      :name "acme"
      :default t
@@ -4140,8 +4140,11 @@ With prefix arg, refresh the tag cache first."
              :user "token")
      :cookie (auth-source-pick-first-password
               :host "work-slack"
-              :user "cookie"))
-    )
+              :user "cookie")
+     :enterprise-token (auth-source-pick-first-password
+                        :host "work-slack"
+                        :user "enterprise")
+     ))
   ;; (elpaca--configure-remotes (elpaca-get 'slack))
   (use-package alert
     :demand t
@@ -4153,6 +4156,9 @@ With prefix arg, refresh the tag cache first."
     :demand t
     :ensure (:host github :repo "ag91/ol-emacs-slack")
     )
+  (require 'slack-saved-to-org)
+  (require 'gkeep-to-org)
+  (setopt gkeep-archive-after-import t)
 
 #+end_src
 *** HackerNews
