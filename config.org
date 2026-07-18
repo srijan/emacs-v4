@@ -3071,14 +3071,14 @@ One alternative can be to have a separate script to copy the required passwords 
     (add-to-list
      'load-path (car (file-expand-wildcards
                       "/Program Files/Erlang OTP/lib/tools-*/emacs"))))
-  (when my-mac-p
-    (add-to-list
-     'load-path (car (file-expand-wildcards
-                      "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
+  ;; (when my-mac-p
+  ;;   (add-to-list
+  ;;    'load-path (car (file-expand-wildcards
+  ;;                     "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
   (when (not my-phone-p)
     (use-package erlang
-      :ensure nil
-      ;; :demand t
+      :demand t
+      :disabled
       :hook ((erlang-mode . display-line-numbers-mode)
              (erlang-mode . column-number-mode))
       :custom
@@ -3089,6 +3089,10 @@ One alternative can be to have a separate script to copy the required passwords 
       :init
       (require 'erlang-start)
       )
+    (use-package erlang-ts
+      :demand t
+      :after erlang
+      :mode ("\\.erl\\'" . erlang-ts-mode))
     (use-package indy
       :disabled
       :custom
@@ -3114,22 +3118,28 @@ One alternative can be to have a separate script to copy the required passwords 
       :ensure nil
       :hook (erlang-mode . eglot-ensure)
       :config
-      (add-to-list 'eglot-server-programs
-                   `(erlang-mode . ,(eglot-alternatives
-                                     '(("erlang_ls" "--transport" "stdio")
-                                       ("elp" "--log-file" "elp.log" "server")))))
-
-      (add-hook 'eglot-managed-mode-hook
-                (lambda ()
-                  ;; Show flymake diagnostics first.
-                  (setq eldoc-documentation-functions
-                        (cons #'flymake-eldoc-function
-                              (remove #'flymake-eldoc-function eldoc-documentation-functions)))
-                  ;; Show all eldoc feedback.
-                  (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
+      ;;(add-to-list 'eglot-server-programs
+      ;;             (erlang-mode . ("elp" "--log-file" "elp.log" "server")))
+      ;;(add-to-list 'eglot-server-programs
+      ;;             '((kotlin-ts-mode kotlin-mode) . ("kotlin-lsp" "--stdio")))
       )
+
+    (add-hook 'eglot-managed-mode-hook
+              (lambda ()
+                ;; Show flymake diagnostics first.
+                (setq eldoc-documentation-functions
+                      (cons #'flymake-eldoc-function
+                            (remove #'flymake-eldoc-function eldoc-documentation-functions)))
+                ;; Show all eldoc feedback.
+                (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
     )
 #+END_SRC
+** Kotlin
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package kotlin-ts-mode
+    :mode "\\.kt\\'"
+    :hook (kotlin-ts-mode . eglot-ensure))
+#+end_src
 ** Docker and Kubernetes
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dockerfile-mode)
