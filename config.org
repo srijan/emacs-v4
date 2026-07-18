@@ -362,7 +362,7 @@ TODO: Need to evaluate how much speedup this gives
     (display-time-mode -1)
     (use-package ef-themes
       :if (display-graphic-p)
-      :disabled
+      :demand t
       :custom
       (ef-themes-to-toggle '(ef-maris-light ef-maris-dark))
       (ef-themes-headings
@@ -383,31 +383,30 @@ TODO: Need to evaluate how much speedup this gives
          (custom-set-faces
           `(mode-line ((,c :background ,bg-mode-line :foreground ,fg-mode-line :box (:line-width 1 :color ,fg-dim))))
           `(mode-line-inactive ((,c :box (:line-width 1 :color ,bg-active)))))))
-      :init
-      ;; (ef-themes-select 'ef-maris-dark)
       )
     )
 #+end_src
 *** Mac
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
-    ;; (use-package nano-theme
-    ;;   :demand t)
+
+    ;; Enable rendering SF symbols on macOS.
+    (set-fontset-font t nil "SF Pro Display" nil 'append)
 
     (use-package modus-themes
       :ensure t
       :demand t
       :config
-      ;; (require-theme 'modus-themes)
-      (setq modus-themes-variable-pitch-ui t
-            modus-themes-common-palette-overrides
-            '((fringe unspecified)
-              (bg-tab-bar bg-main)
-              (bg-tab-current bg-cyan-intense)
-              (bg-tab-other bg-inactive)
-              ))    
-      ;; (((border-mode-line-active unspecified)
-      ;;   (border-mode-line-inactive unspecified)))
+      ;; (setopt modus-themes-variable-pitch-ui t)
+      ;; modus-themes-common-palette-overrides
+      ;; '((fringe unspecified)
+      ;;   (bg-tab-bar bg-main)
+      ;;   (bg-tab-current bg-cyan-intense)
+      ;;   (bg-tab-other bg-inactive)
+      ;;   )
+
+      (modus-themes-include-derivatives-mode 1)
+      (setopt modus-themes-to-rotate '(ef-maris-dark ef-elea-dark ef-winter ef-duo-dark ef-maris-light ef-elea-light ef-spring))
 
       (defun my/custom-faces (&rest _)
         (custom-set-faces
@@ -416,23 +415,27 @@ TODO: Need to evaluate how much speedup this gives
         ;; (set-face-font 'default "Aporetic Sans Mono-17")
         ;; (set-face-font 'variable-pitch "Inter-15")
         ;; (set-face-font 'default "Berkeley Mono-15")
-        (set-face-attribute 'default nil :family "Berkeley Mono" :height 140 :weight 'semilight)
-        (set-face-attribute 'bold nil :weight 'regular)
+        (set-face-attribute 'default nil :family "JetBrains Mono" :height 140)
+        ;; (set-face-attribute 'bold nil :weight 'regular)
         )
       (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
       
-      (defun my/mac-apply-theme (appearance)
-        "Load theme, taking current system APPEARANCE into consideration."
-        (pcase appearance
-          ('light (modus-themes-load-theme 'modus-operandi-tinted))
-          ('dark (modus-themes-load-theme 'modus-vivendi-tinted))))
+      ;; (defun my/mac-apply-theme (appearance)
+      ;;   "Load theme, taking current system APPEARANCE into consideration."
+      ;;   (pcase appearance
+      ;;     ('light (modus-themes-load-theme 'modus-operandi-tinted))
+      ;;     ('dark (modus-themes-load-theme 'modus-vivendi-tinted))))
 
-      (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+      ;; (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
+      (modus-themes-load-theme 'ef-maris-dark)
       )
+
+    ;; (require 'materialized-theme)
+    ;; (load-theme 'materialized t)
 
     (setopt ns-use-srgb-colorspace nil)
     (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
-    ;; (add-to-list 'default-frame-alist '(ns-appearance . dark))
+    (add-to-list 'default-frame-alist '(ns-appearance . dark))
 
     ;; (use-package calle24 :demand t)
     )
