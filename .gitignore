@@ -6,3 +6,14 @@ pre-init.el
 post-init.el
 .aider*
 .agent-shell/
+
+# Package/build artifacts
+elpa/
+eln-cache/
+
+# Runtime/session state
+..emacs.d-tabspaces-session.el
+
+# mindwtr sync state and local data (real file lives in Sync/docs/org/)
+mindwtr/
+mindwtr.org
