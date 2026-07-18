@@ -4222,12 +4222,81 @@ With prefix arg, refresh the tag cache first."
     )
     
 #+end_src
+*** Micropub / Indieweb
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package micropub
+    :ensure nil
+    :load-path "~/workspace/srijan/micropub.el"
+    :config
+    (setopt micropub-me "https://srijan.ch")
+    )
+#+end_src
+*** IRC
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package clatter
+    :commands clatter-connect
+    :bind (:map clatter-mode-map
+                ("C-c ."   . clatter-track-switch)
+                ("C-c C-." . clatter-track-switch)
+                ("C-c :"   . clatter-track-list)
+                ("C-c n"   . clatter-nicklist-toggle)
+                ("C-c C-n" . clatter-nicklist-toggle))
+    :config
+    (clatter-setup)
+    (require 'gnutls)
+
+    ;; Clatter has no `soju.im/bouncer-networks' support, so each upstream
+    ;; network needs its own connection, with the network named in the SASL
+    ;; username as <user>/<network>.  Clatter hardcodes the SASL authcid to
+    ;; the nick, which cannot carry the suffix (a `/' is not a legal nick,
+    ;; and the nick is also sent as a literal NICK to the upstream).  Route
+    ;; the authcid through `:username' instead, which clatter otherwise only
+    ;; uses for the USER command.  Upstream lacks a `:sasl-username'.
+    (define-advice clatter-cap--sasl-plain-authenticate
+        (:override (conn) sj/sasl-username)
+      "Use `:username' as the SASL authcid when set, else fall back to nick."
+      (let* ((config (process-get (clatter-connection-process conn)
+                                  :clatter-config))
+             (authcid (or (plist-get config :username)
+                          (clatter-connection-nick conn)))
+             (password (clatter-get-password (clatter-connection-network-id conn)))
+             (auth-string (format "%c%s%c%s" 0 authcid 0 password))
+             (encoded (base64-encode-string auth-string t)))
+        (setf (clatter-connection-sasl-state conn) :authenticating)
+        (clatter-send conn (format "AUTHENTICATE %s" encoded))))
+    :custom
+    ;; Show activity crumbs in all clatter buffers, not just the active one.
+    (clatter-track-in-buffer-mode-line t)
+    (clatter-message-order 'oldest-first)
+    (clatter-fill-column nil)
+    (clatter-networks
+     '(
+       ("libera"
+        ;; The TLS cert is issued for irc.example.net only (no SAN for the
+        ;; gamja. subdomain), though both names resolve to the same host.
+        :server "irc.example.net"
+        :port 16502
+        :tls t
+        ;; Must match the nick soju already holds upstream: clatter sends a
+        ;; literal NICK, which soju forwards, renaming us on the network.
+        :nick "srijan"
+        ;; soju selects the upstream network from the SASL authcid suffix.
+        :username "srijan/libera"
+        :sasl plain
+        ;; Bouncer session: skip NickServ IDENTIFY and nick reclaim.
+        :bouncer t
+        ))))
+#+end_src
 ** Desktop Utilities
 - A script to set the default browser on Linux:
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package ready-player
     :config
     (setopt ready-player-set-global-bindings nil))
+  (use-package ytr
+    :ensure (:host github :repo "xenodium/ytr")
+    :commands (ytr)
+    )
   (when my-linux-p
     (defun sj/default-browser (&optional name)
       "Set the default browser based on the given NAME."
