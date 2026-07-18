@@ -3145,7 +3145,7 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package dockerfile-mode)
   (use-package yaml-mode)
 #+end_src
-** mu4e
+** COMMENT mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package gnus
     :ensure nil
@@ -3485,19 +3485,164 @@ One alternative can be to have a separate script to copy the required passwords 
 #+end_src
 ** notmuch
 #+begin_src emacs-lisp :tangle "post-init.el"
+  ;; MIME rendering (shared with notmuch for HTML display)
+  (use-package gnus
+    :ensure nil
+    :custom
+    (gnus-inhibit-mime-unbuttonizing t)
+    (mm-discouraged-alternatives 'nil))
+
+  (use-package mailcap
+    :ensure nil
+    :config
+    (mailcap-add-mailcap-entry "text" "html"
+      '((viewer . "open %s")
+        (nametemplate . "%s.html")
+        (type . "text/html"))))
+
   (use-package notmuch
-    :disabled
+    :if (not my-phone-p)
+    :bind (("C-c m" . notmuch))
     :config
     (setopt notmuch-search-oldest-first nil)
+    (setopt notmuch-show-logo nil)
+
     (setopt notmuch-saved-searches
-            '((:name "Inbox" :query "tag:inbox" :key "i")
-              (:name "Unread" :query "tag:unread" :key "u")
-              (:name "Sent" :query "tag:sent" :key "s")
-              (:name "Archive" :query "not tag:inbox" :key "a")
-              ;; Add saved searches for your other "folders"
-              (:name "Inbox GO" :query "tag:inbox AND tag:work" :key "w")
-              (:name "Inbox Personal" :query "tag:inbox AND -tag:work" :key "p")))
+            '((:name "Inbox All"    :query "tag:inbox"                        :key "i" :sort-order newest-first)
+              (:name "Inbox GO"     :query "tag:inbox path:acme/**"     :key "g" :sort-order newest-first)
+              (:name "Unread"       :query "tag:unread"                       :key "u" :sort-order newest-first)
+              (:name "Sent"         :query "tag:sent"                         :key "s" :sort-order newest-first)
+              (:name "Flagged"      :query "tag:flagged"                      :key "f" :sort-order newest-first)
+              (:name "All mail"     :query "path:acme/**"               :key "a" :sort-order newest-first)))
+
+    ;; Send via gmi (Gmail API — no SMTP/OAuth2 proxy needed)
+    (setopt message-send-mail-function 'message-send-mail-with-sendmail)
+    (setopt sendmail-program (executable-find "gmi"))
+    (setopt message-sendmail-f-is-evil t)
+    (setopt message-sendmail-extra-arguments
+            '("send" "--quiet" "-t" "-C" "/Users/srijan.c/Maildir/acme"))
+    (setopt message-kill-buffer-on-exit t)
+
+    ;; No FCC — gmi send stores in Gmail Sent, lieer pulls it back on next sync
+    (setopt notmuch-fcc-dirs nil)
+
+    (setopt notmuch-identities '("Srijan Choudhary <you@work.example>"))
+    (setopt notmuch-always-prompt-for-sender nil)
+
+    ;; Prefer HTML
+    (setopt notmuch-multipart/alternative-discouraged '("text/plain" "text/richtext"))
+    (setopt notmuch-show-only-matching-messages nil)
+    (setopt notmuch-search-hide-excluded nil)
+
+    (add-hook 'notmuch-show-hook #'visual-line-mode)
+    (add-hook 'message-setup-hook #'visual-line-mode)
+
+    ;; G to manually sync in notmuch-hello
+    (define-key notmuch-hello-mode-map "G"
+                (lambda ()
+                  (interactive)
+                  (message "Syncing mail...")
+                  (set-process-sentinel
+                   (start-process "gmi-sync" "*gmi-sync*" "/bin/sh" "-c"
+                                  "gmi sync -sv -C ~/Maildir/acme && gmi sync -sv -C ~/Maildir/srijan && notmuch new")
+                   (lambda (proc _event)
+                     (when (= 0 (process-exit-status proc))
+                       (notmuch-refresh-all-buffers)
+                       (message "Sync done."))))))
+
+    (setopt notmuch-tagging-keys
+            '(("e" ("-inbox" "-unread") "Archive")
+              ("u" ("+unread") "Mark unread")
+              ("f" ("+flagged") "Flag")
+              ("d" ("+deleted" "-inbox" "-unread") "Delete")
+              ("s" ("+spam" "-inbox") "Mark spam")))
+
+    ;; Tags preserved when archiving/deleting (everything else gets stripped)
+    (defvar my/notmuch-keep-tags '("attachment" "signed" "encrypted"))
+
+    (defun my/notmuch-strip-and-tag (new-tag current-tags)
+      "Tag ops: add NEW-TAG (if non-nil), strip all tags except keepers from CURRENT-TAGS.
+  Skips tags that would produce invalid ops (spaces, empty strings)."
+      (let ((removals (seq-filter
+                       (lambda (op) (string-match-p "^[-+]\\S-+$" op))
+                       (mapcar (lambda (tag) (concat "-" tag))
+                               (seq-remove (lambda (tag) (member tag my/notmuch-keep-tags))
+                                           current-tags)))))
+        (if new-tag (cons (concat "+" new-tag) removals) removals)))
+
+    ;; Quick triage in search view: e=archive+next, d=delete+next
+    (define-key notmuch-search-mode-map "e"
+                (lambda () (interactive)
+                  (notmuch-search-tag (my/notmuch-strip-and-tag nil (notmuch-search-get-tags)))
+                  (notmuch-search-next-thread)))
+    (define-key notmuch-search-mode-map "d"
+                (lambda () (interactive)
+                  (notmuch-search-tag (my/notmuch-strip-and-tag "deleted" (notmuch-search-get-tags)))
+                  (notmuch-search-next-thread)))
+
+    ;; Quick triage in tree view: e=archive+next, d=delete+next
+    (define-key notmuch-tree-mode-map "e"
+                (lambda () (interactive)
+                  (notmuch-tree-tag (my/notmuch-strip-and-tag nil (notmuch-tree-get-tags)))
+                  (notmuch-tree-next-matching-message)))
+    (define-key notmuch-tree-mode-map "d"
+                (lambda () (interactive)
+                  (notmuch-tree-tag (my/notmuch-strip-and-tag "deleted" (notmuch-tree-get-tags)))
+                  (notmuch-tree-next-matching-message)))
+    ;; show-mode: V = open HTML part in external browser
+    (defun my/notmuch-show-open-html-in-browser ()
+      "Open the text/html part of the current message in an external browser."
+      (interactive)
+      (save-excursion
+        (let ((end (notmuch-show-message-bottom))
+              (pos (notmuch-show-message-top))
+              found)
+          (while (and (not found) pos (< pos end))
+            (let ((part (get-text-property pos :notmuch-part)))
+              (if (and part (string= (plist-get part :content-type) "text/html"))
+                  (progn
+                    (goto-char pos)
+                    (setq found t)
+                    (notmuch-show-view-part))
+                (setq pos (next-single-property-change pos :notmuch-part nil end)))))
+          (unless found
+            (message "No HTML part found in this message.")))))
+
+    (define-key notmuch-show-mode-map "V" #'my/notmuch-show-open-html-in-browser)
+
+    ;; show-mode: e=archive, d=delete — then next-or-next-thread
+    (define-key notmuch-show-mode-map "e"
+                (lambda () (interactive)
+                  (apply #'notmuch-show-tag-message
+                         (my/notmuch-strip-and-tag nil (notmuch-show-get-tags)))
+                  (unless (notmuch-show-next-open-message)
+                    (notmuch-show-next-thread t))))
+    (define-key notmuch-show-mode-map "d"
+                (lambda () (interactive)
+                  (apply #'notmuch-show-tag-message
+                         (my/notmuch-strip-and-tag "deleted" (notmuch-show-get-tags)))
+                  (unless (notmuch-show-next-open-message)
+                    (notmuch-show-next-thread t))))
     )
+
+  (use-package ol-notmuch
+    :if (not my-phone-p)
+    :after (notmuch org))
+
+  (use-package consult-notmuch
+    :if (not my-phone-p)
+    :after notmuch
+    :bind (:map notmuch-hello-mode-map
+                ("/" . consult-notmuch-tree)))
+
+  (use-package org
+    :ensure nil
+    :after notmuch
+    :bind ((:map notmuch-show-mode-map
+                 ("C-c i" . org-capture-mail))
+           (:map notmuch-search-mode-map
+                 ("C-c i" . org-capture-mail))))
+
 #+end_src
 
 ** JIRA
