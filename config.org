@@ -977,178 +977,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     )
 
 #+end_src
-** COMMENT Workspaces - Tab Bar and Bufferlo
+** COMMENT Workspaces - Tab Bar and Tabspaces
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;; Tab line - show current workspace's buffers per window
-  (use-package tab-line
-    :ensure nil
-    :demand t
-    :bind
-    (("C-S-<tab>"        . tab-line-switch-to-prev-tab)
-     ("C-<iso-lefttab>" . tab-line-switch-to-prev-tab)
-     ("C-<tab>"         . tab-line-switch-to-next-tab))
-    :config
-    (setq
-     tab-line-tabs-function
-     (lambda ()
-       (seq-filter (lambda (b) (memq b (bufferlo-buffer-list)))
-                   (tab-line-tabs-fixed-window-buffers)))
-     tab-line-new-button-show nil
-     tab-line-close-button-show nil)
-    (global-tab-line-mode 1))
-  ;; Tab bar as workspace switcher
-  (use-package tab-bar
-    :ensure nil
-    :demand t
-    :bind
-    (("C-<prior>" . tab-bar-switch-to-prev-tab)
-     ("C-<next>" . tab-bar-switch-to-next-tab))
-    :custom
-    (tab-bar-show t)
-    (tab-bar-new-tab-choice "*scratch*")
-    (tab-bar-close-button-show nil)
-    (tab-bar-new-button-show nil)
-    :config
-    (tab-bar-mode 1)
-
-    (defun my/tab-bar-find-or-create (name)
-      "Switch to tab NAME, creating it if it doesn't exist."
-      (unless (seq-some (lambda (tab) (equal (alist-get 'name tab) name))
-                        (tab-bar-tabs))
-        (tab-bar-new-tab)
-        (tab-bar-rename-tab name))
-      (tab-bar-switch-to-tab name))
-
-    (defun my/tab-bar-target-tab (buf)
-      "Return a tab name for BUF based on context, or nil for no routing."
-      (when (buffer-live-p buf)
-        (let ((bname (buffer-name buf))
-              (mode  (buffer-local-value 'major-mode buf))
-              (file  (buffer-file-name buf)))
-          (cond
-           ((or (string-prefix-p "*mu4e" bname)
-                (string-prefix-p "*notmuch" bname)
-
-                (memq mode '(mu4e-main-mode mu4e-headers-mode
-                                            mu4e-view-mode mu4e-compose-mode
-                                            notmuch-hello-mode notmuch-search-mode
-                                            notmuch-show-mode notmuch-tree-mode
-                                            notmuch-message-mode)))
-            "Email")
-           ((or (equal bname "*Org Agenda*")
-                (and file
-                     (cl-some (lambda (af)
-                                (file-equal-p file (expand-file-name af)))
-                              (bound-and-true-p org-agenda-files))))
-            "Agenda")
-           ((and file
-                 (when-let* ((proj (project-current nil (file-name-directory file))))
-                   (file-name-nondirectory
-                    (directory-file-name (project-root proj))))))))))
-
-    (defun my/server-switch-buffer-to-tab (orig-fn &rest args)
-      "Route `server-switch-buffer' opens to the appropriate tab."
-      (let* ((buf      (car args))
-             (tab-name (when buf (my/tab-bar-target-tab buf))))
-        (when tab-name
-          (my/tab-bar-find-or-create tab-name))
-        (apply orig-fn args)))
-
-    (advice-add 'server-switch-buffer :around #'my/server-switch-buffer-to-tab)
-
-    ;; Open specific commands in their dedicated tab
-    (defun my/mu4e-in-tab (orig-fn &rest args)
-      (my/tab-bar-find-or-create "Email")
-      (apply orig-fn args))
-
-    (defun my/org-agenda-in-tab (orig-fn &rest args)
-      (my/tab-bar-find-or-create "Agenda")
-      (apply orig-fn args))
-
-    (advice-add 'mu4e     :around #'my/mu4e-in-tab)
-    (advice-add 'notmuch  :around #'my/mu4e-in-tab)
-    (advice-add 'org-agenda :around #'my/org-agenda-in-tab)
-
-    ;; Auto-switch tab when visiting a buffer that belongs to another tab
-    (defvar my/--switching-tab nil
-      "Guard to prevent recursive tab switching.")
-
-    (defun my/switch-to-buffer-in-tab (orig-fn buffer-or-name &rest args)
-      "If BUFFER belongs to another tab, switch to that tab first."
-      (if my/--switching-tab
-          (apply orig-fn buffer-or-name args)
-        (let ((my/--switching-tab t))
-          (when-let* ((buf (if (stringp buffer-or-name)
-                               (get-buffer buffer-or-name)
-                             buffer-or-name))
-                      ((buffer-live-p buf)))
-            (if-let ((tab-name (my/tab-bar-target-tab buf)))
-                (my/tab-bar-find-or-create tab-name)
-              (when-let* ((tab (tab-bar-get-buffer-tab buf nil t))
-                          (tab-name (alist-get 'name tab)))
-                (tab-bar-switch-to-tab tab-name))))
-          (apply orig-fn buffer-or-name args))))
-
-    (advice-add 'switch-to-buffer :around #'my/switch-to-buffer-in-tab)
-
-    ;; Route find-file to existing project tab
-    (defun my/find-file-in-project-tab (orig-fn filename &rest args)
-      "If FILENAME belongs to a project with an existing tab, switch to it first."
-      (unless my/--switching-tab
-        (let ((my/--switching-tab t))
-          (when-let* ((dir (file-name-directory (expand-file-name filename)))
-                      (proj (project-current nil dir))
-                      (tab-name (file-name-nondirectory
-                                 (directory-file-name (project-root proj))))
-                      ((seq-some (lambda (tab) (equal (alist-get 'name tab) tab-name))
-                                 (tab-bar-tabs))))
-            (tab-bar-switch-to-tab tab-name))))
-      (apply orig-fn filename args))
-
-    (advice-add 'find-file :around #'my/find-file-in-project-tab))
-
-  ;; Bufferlo - per-tab buffer isolation
-  (use-package bufferlo
-    :demand t
-    :config
-    (bufferlo-mode 1)
-    ;; Consult source showing only current tab's buffers (default in C-x b)
-    (with-eval-after-load 'consult
-      (defface my/bufferlo-buffer-face
-        '((t :inherit font-lock-string-face))
-        "Face for tab-local buffers in consult.")
-      (defvar my/bufferlo-consult-source
-        `(:name    "Tab Buffers"
-                   :narrow  ?t
-                   :category buffer
-                   :face    my/bufferlo-buffer-face
-                   :history buffer-name-history
-                   :state   ,#'consult--buffer-state
-                   :default t
-                   :items   ,(lambda () (mapcar #'buffer-name (bufferlo-buffer-list)))))
-      (add-to-list 'consult-buffer-sources 'my/bufferlo-consult-source)))
-
-#+end_src
-** Workspaces - Tab Bar and Tabspaces
-#+begin_src emacs-lisp :tangle "post-init.el"
-  ;; Tab line - show current workspace's buffers per window
-  ;; (use-package tab-line
-  ;;   :ensure nil
-  ;;   :demand t
-  ;;   :bind
-  ;;   (("C-S-<tab>"        . tab-line-switch-to-prev-tab)
-  ;;    ("C-<iso-lefttab>" . tab-line-switch-to-prev-tab)
-  ;;    ("C-<tab>"         . tab-line-switch-to-next-tab))
-  ;;   :config
-  ;;   (setq
-  ;;    tab-line-tabs-function
-  ;;    (lambda ()
-  ;;      (seq-filter #'tabspaces--local-buffer-p
-  ;;                  (tab-line-tabs-fixed-window-buffers)))
-  ;;    tab-line-new-button-show nil
-  ;;    tab-line-close-button-show nil)
-  ;;   (global-tab-line-mode 1))
-
   ;; Tab bar
   (use-package tab-bar
     :ensure nil
@@ -1172,7 +1002,9 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
                         (tab-bar-tabs))
         (tab-bar-new-tab)
         (tab-bar-rename-tab name))
-      (tab-bar-switch-to-tab name))
+      (tab-bar-switch-to-tab name)
+      (when (fboundp 'my/tabspaces-ensure-workspace-scratch)
+        (my/tabspaces-ensure-workspace-scratch name)))
 
     (defun my/mu4e-in-tab (orig-fn &rest args)
       (my/tab-bar-find-or-create "Email")
@@ -1182,9 +1014,14 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       (my/tab-bar-find-or-create "GTD")
       (apply orig-fn args))
 
+    (defun my/elfeed-in-tab (orig-fn &rest args)
+      (my/tab-bar-find-or-create "Feeds")
+      (apply orig-fn args))
+
     (advice-add 'mu4e    :around #'my/mu4e-in-tab)
     (advice-add 'notmuch :around #'my/mu4e-in-tab)
     (advice-add 'org-agenda :around #'my/org-agenda-in-tab)
+    (advice-add 'elfeed  :around #'my/elfeed-in-tab)
 
     (defun my/org-file-in-gtd-p (file)
       "Return non-nil when FILE should live in the GTD tab."
@@ -1223,6 +1060,9 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
                                             notmuch-show-mode notmuch-tree-mode
                                             notmuch-message-mode)))
            "Email")
+           ((or (string-prefix-p "*elfeed" bname)
+                (memq mode '(elfeed-search-mode elfeed-show-mode)))
+            "Feeds")
            ((or (equal bname "*Org Agenda*")
                 (my/org-file-in-gtd-p file))
             "GTD")
@@ -1278,9 +1118,18 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (tabspaces-default-tab "Main")
     (tabspaces-remove-to-default t)
     (tabspaces-include-buffers '())
-    (tabspaces-session t)
+    (tabspaces-session nil)
     :config
     (tabspaces-mode 1)
+
+    ;; When killing the last workspace buffer, don't bleed into another workspace.
+    ;; switch-to-prev-buffer (called internally on kill-buffer) will skip any
+    ;; buffer that isn't local to the current tab.  If no local buffer remains,
+    ;; Emacs falls back to *scratch*, which is acceptable.
+    (setq switch-to-prev-buffer-skip
+          (lambda (_window buffer _bury-or-kill)
+            (and (bound-and-true-p tabspaces-mode)
+                 (not (tabspaces--local-buffer-p buffer)))))
 
     (defun my/tabspaces-add-buffer-to-current-tab (buffer)
       "Add BUFFER to the current tab's local buffer list."
@@ -1289,14 +1138,33 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
          nil 'buffer-list
          (cons buffer (delq buffer (frame-parameter nil 'buffer-list))))))
 
+    (defun my/tabspaces-ensure-workspace-scratch (tab-name)
+      "Get or create *scratch-TAB-NAME* and register it in the current tab.
+If the buffer already exists (e.g. from a prior session), it is simply
+linked to the workspace without re-initialising its contents."
+      (let* ((buf-name (format "*scratch-%s*" tab-name))
+             (buf (get-buffer-create buf-name)))
+        (with-current-buffer buf
+          (unless (derived-mode-p 'lisp-interaction-mode)
+            (lisp-interaction-mode)))
+        (my/tabspaces-add-buffer-to-current-tab buf)
+        buf))
+
     (defun my/tabspaces-setup-main-tab ()
       "Ensure the Main tab has shared utility buffers without making them global."
       (tab-bar-rename-tab "Main")
+      (my/tabspaces-ensure-workspace-scratch "Main")
       (dolist (buffer-name '("*scratch*" "*Messages*" "*Warnings*"))
         (when-let ((buffer (get-buffer buffer-name)))
           (my/tabspaces-add-buffer-to-current-tab buffer))))
 
     (my/tabspaces-setup-main-tab)
+
+    ;; Ensure per-workspace scratch exists whenever a workspace is switched/created
+    (advice-add 'tabspaces-switch-or-create-workspace :after
+                (lambda (&rest _)
+                  (my/tabspaces-ensure-workspace-scratch
+                   (alist-get 'name (tab-bar--current-tab)))))
 
     ;; Consult: show workspace buffers by default, hide global list
     (plist-put consult-source-buffer :hidden t)
@@ -2676,46 +2544,6 @@ One alternative can be to have a separate script to copy the required passwords 
           tramp-verbose 2)
 #+end_src
 
-** COMMENT Workspaces - beframe
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package beframe
-    :demand
-    :custom
-    (beframe-functions-in-frames '(project-prompt-project-dir))
-    :config
-    (beframe-mode 1)
-    (defvar consult-buffer-sources)
-    (declare-function consult--buffer-state "consult")
-
-    (with-eval-after-load 'consult
-      (defface beframe-buffer
-        '((t :inherit font-lock-string-face))
-        "Face for `consult' framed buffers.")
-
-      (defun my-beframe-buffer-names-sorted (&optional frame)
-        "Return the list of buffers from `beframe-buffer-names' sorted by visibility.
-    With optional argument FRAME, return the list of buffers of FRAME."
-        (beframe-buffer-names frame :sort #'beframe-buffer-sort-visibility))
-
-      (defvar beframe-consult-source
-        `( :name     "Frame-specific buffers (current frame)"
-           :narrow   ?F
-           :category buffer
-           :face     beframe-buffer
-           :history  beframe-history
-           :items    ,#'my-beframe-buffer-names-sorted
-           :action   ,#'switch-to-buffer
-           :state    ,#'consult--buffer-state))
-
-      (add-to-list 'consult-buffer-sources 'beframe-consult-source))
-
-    (define-key global-map (kbd "C-c b") #'beframe-prefix-map)
-    ;; (global-set-key (kbd "C-b") 'consult-buffer)
-    ;; (define-key evil-normal-state-map (kbd "C-b") 'consult-buffer)
-    ;; TODO: ↑ does not work in org agenda
-    )
-
-#+end_src
 ** Dictionary and spelling
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jinx
