@@ -613,8 +613,10 @@ from the Phone block via =material-pbm-icons= (see below). Design:
                  (cl-loop for i from 1 to n
                           collect `(defun ,(intern (format "%s-%d" 'android-support-global-tool-bar-custom-command i)) ()
                                      (interactive)
-                                     (when-let ((,command (nth ,(1- i) android-support-global-tool-bar-custom-commands)))
-                                       (call-interactively ,command)))))))
+                                     (when-let* ((,command (nth ,(1- i) android-support-global-tool-bar-custom-commands)))
+                                       (if (commandp ,command)
+                                           (call-interactively ,command)
+                                         (message "android-support: `%s' is not available" ,command))))))))
   (android-support--define-custom-commands 6)
 
   ;;;; The icon/command grid
@@ -643,7 +645,7 @@ from the Phone block via =material-pbm-icons= (see below). Design:
 
   (defun android-support-global-tool-bar-setup ()
     "Rebuild the global `tool-bar-map' from `android-support-global-tool-bar-items'."
-    (setf tool-bar-map '(keymap nil))
+    (setf tool-bar-map (list 'keymap nil))
     (cl-loop for (icon command key) in android-support-global-tool-bar-items
              do (tool-bar-add-item icon command (or key command))))
 
