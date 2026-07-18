@@ -108,7 +108,7 @@ plaintext when you're done regardless.
 `config.org` detects Android via `ANDROID_ROOT` (`my-phone-p`), set on both
 **Termux Emacs** and the **native Android port**
 ([android-ports-for-gnu-emacs](https://sourceforge.net/projects/android-ports-for-gnu-emacs/)),
-and enables a touch-friendly setup: top toolbar, always-on touch-screen keyboard
+and enables a touch-friendly setup: bottom toolbar, always-on touch-screen keyboard
 (`touch-screen-display-keyboard`), momentum scrolling, `touchpad-scroll-mode`,
 and an enlarged `tool-bar-button-margin` to compensate for Android's display
 density. A few things need care.
@@ -197,8 +197,8 @@ and `/product/fonts`.
 ### Touch tips
 
 - **Rapid volume-down presses = `C-g`** — a quit key when no keyboard is up.
-- The config uses `tool-bar-position` `top`; set it to `bottom` to keep buttons
-  nearer your thumbs, and enable `modifier-bar-mode` for a Ctrl/Meta button row.
+- The on-screen toolbar (see below) already sits at the `bottom` with
+  `modifier-bar-mode` on, so buttons and modifiers are under your thumbs.
 - If an on-screen keyboard fights Emacs while typing, toggle
   `text-conversion-style` (per-buffer) or `overriding-text-conversion-style`
   (global).
