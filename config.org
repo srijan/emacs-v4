@@ -1,6 +1,5 @@
 #+title: GNU Emacs configuration
 #+author: Srijan Choudhary
-#+email: you@example.com
 #+language: en
 #+options: ':t toc:nil num:t author:t email:t
 #+startup: content indent
@@ -158,6 +157,60 @@ This will generate a header at the top of the tangled file to indicate it is gen
   (when my-mac-p (setopt server-use-tcp t))
   (server-start)
 #+end_src
+** Private variables (age)
+Personal identifiers (emails, hostnames, employer, sync paths) live encrypted in
+=private.json.age= (encrypted with [[https://github.com/FiloSottile/age][age]]) so this file can stay public. The
+=defvar= values below are harmless placeholders; =sj/load-private= overrides them
+with the real values, decrypted at startup with the age identity at
+=~/.config/age/keys.txt=. If =age= or the key is missing, Emacs still loads with
+the placeholders instead of breaking.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defvar sj/mail-personal "you@example.com")
+  (defvar sj/mail-fastmail "you@fastmail.example")
+  (defvar sj/mail-work "you@work.example")
+  (defvar sj/mindwtr-url "https://mindwtr.example.net")
+  (defvar sj/miniflux-host "miniflux.example.net")
+  (defvar sj/irc-server "irc.example.net")
+  (defvar sj/jira-base-url "https://work.atlassian.example")
+  (defvar sj/employer "acme")
+  (defvar sj/sync-dir "~/Sync"
+    "Root of the personal sync folder.")
+  (defvar sj/koreader-scp-source "root@192.0.2.10:/mnt/us/koreader/clipboard/")
+  (defvar sj/koreader-scp-port "22")
+  (defvar sj/hass-host "192.0.2.20")
+
+  (defun sj/sync (path)
+    "Expand PATH relative to `sj/sync-dir'."
+    (expand-file-name path sj/sync-dir))
+
+  (defvar sj/age-identity (expand-file-name "~/.config/age/keys.txt")
+    "age identity (private key) used to decrypt `sj/private-file'.")
+
+  (defvar sj/private-file
+    (expand-file-name "private.json.age" user-emacs-directory)
+    "age-encrypted JSON holding the real values of the sj/* identifiers.")
+
+  (defun sj/load-private ()
+    "Decrypt `sj/private-file' with age and set the sj/* variables it holds.
+  A no-op (with a warning) when age or the identity is unavailable, so startup
+  never breaks on a machine without the key."
+    (when (and (executable-find "age")
+               (file-readable-p sj/private-file)
+               (file-readable-p sj/age-identity))
+      (condition-case err
+          (let ((json (with-temp-buffer
+                        (unless (zerop (call-process "age" nil t nil "-d"
+                                                     "-i" sj/age-identity
+                                                     sj/private-file))
+                          (error "age -d failed: %s" (buffer-string)))
+                        (goto-char (point-min))
+                        (json-parse-buffer :object-type 'alist))))
+            (dolist (pair json)
+              (set (car pair) (cdr pair))))
+        (error (message "sj/load-private: %s" (error-message-string err))))))
+
+  (sj/load-private)
+#+end_src
 ** COMMENT Compile Angel
 Speed up Emacs by Automatically Byte-compiling and Native-compiling all .el files
 
@@ -195,7 +248,7 @@ TODO: Need to evaluate how much speedup this gives
 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (setq user-full-name "Srijan Choudhary"
-        user-mail-address "you@example.com")
+        user-mail-address sj/mail-personal)
 #+END_SRC
 ** Linux Specific
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -1206,10 +1259,10 @@ linked to the workspace without re-initialising its contents."
     (dirvish-override-dired-mode)
     :custom
     (dirvish-quick-access-entries ; It's a custom option, `setq' won't work
-     '(("h" "~/"                          "Home")
+     `(("h" "~/"                          "Home")
        ("d" "~/Downloads/"                "Downloads")
-       ("n" "~/Sync/docs/notes/"   "Notes")
-       ("o" "~/Sync/docs/org/"     "GTD Org")
+       ("n" ,(sj/sync "docs/notes/")      "Notes")
+       ("o" ,(sj/sync "docs/org/")        "GTD Org")
        ("c" "~/.emacs.d/"                 "Config")))
     :config
     ;; (dirvish-peek-mode) ; Preview files in minibuffer
@@ -1446,7 +1499,7 @@ One alternative can be to have a separate script to copy the required passwords 
       (when (eq system-type 'darwin)
         (call-process "open" nil 0 nil "-g" url)))
 
-    (defvar my/state-file "~/Sync/docs/org/state.json"
+    (defvar my/state-file (sj/sync "docs/org/state.json")
       "Synced JSON file publishing Emacs context to an Android KWGT widget.
   Written on org-clock in/out/cancel; read-only on the phone (via Syncthing),
   where Tasker watches this file (File Modified event; a Syncthing write fires
@@ -1523,15 +1576,15 @@ One alternative can be to have a separate script to copy the required passwords 
     :commands (mindwtr-capture-template)
     
     :custom
-    (mindwtr-server-url "https://mindwtr.example.net")
+    (mindwtr-server-url sj/mindwtr-url)
     (mindwtr-sync-interval 600)        ; periodic sync; nil to disable
     (mindwtr-sync-idle-debounce 5)     ; debounce after save
 
     :init
-    (setq mindwtr-file "~/Sync/docs/org/mindwtr.org")
+    (setq mindwtr-file (sj/sync "docs/org/mindwtr.org"))
     (with-eval-after-load 'org
       (add-to-list 'org-agenda-files mindwtr-file)
-      (add-to-list 'org-agenda-files "~/Sync/docs/org/misc.org")
+      (add-to-list 'org-agenda-files (sj/sync "docs/org/misc.org"))
       )
     (with-eval-after-load 'org-capture
       (add-to-list 'org-capture-templates
@@ -2544,7 +2597,7 @@ One alternative can be to have a separate script to copy the required passwords 
     :bind (("C-c n ;" . howm-menu))
     :init
     (require 'howm-org)
-    (setopt howm-directory "~/Sync/docs/notes")
+    (setopt howm-directory (sj/sync "docs/notes"))
     (setopt howm-follow-theme t)
     (setopt howm-file-name-format "%Y%m%dT%H%M%S.org")
     (setopt howm-view-title-header "#+title:")
@@ -2586,7 +2639,7 @@ One alternative can be to have a separate script to copy the required passwords 
 *** Denote
 #+name: denote_config
 #+begin_src emacs-lisp
-  (setq my-notes-dir           (expand-file-name     "~/Sync/docs/notes/"))
+  (setq my-notes-dir           (sj/sync "docs/notes/"))
   (setq my-journals-dir        (concat my-notes-dir  "journals"))
   (setq my-zettels-dir         (concat my-notes-dir  "main"))
   (setq my-templates-dir       (concat my-notes-dir  "templates"))
@@ -2697,12 +2750,12 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<denote_config>>
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :epilogue (format-time-string ";; Last generated on %c")
+#+begin_src emacs-lisp :tangle (expand-file-name "docs/notes/denote_config.el" (or (bound-and-true-p sj/sync-dir) "~/Sync")) :epilogue (format-time-string ";; Last generated on %c")
   ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
   ;; This file has been generated from my emacs's config.org file and is for
   ;; reference purposes only. DO NOT EDIT.
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :noweb yes
+#+begin_src emacs-lisp :tangle (expand-file-name "docs/notes/denote_config.el" (or (bound-and-true-p sj/sync-dir) "~/Sync")) :noweb yes
   <<denote_config>>
 #+end_src
 *** Literature Notes from Koreader
@@ -2710,7 +2763,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp
   ;; KOReader configuration
   (require 'koreader-json-to-org)
-  (setq my-koreader-export-dir  (expand-file-name "~/Sync/Documents/koreader/clipboard/"))
+  (setq my-koreader-export-dir  (sj/sync "Documents/koreader/clipboard/"))
   (setq my-koreader-output-dir  (concat my-notes-dir "reference/"))
   (setq koreader-denote-tag "books:inbox")
 
@@ -2730,7 +2783,10 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; Sync files from KOReader device (unless skipped)
     (unless skip-sync
       (message "Syncing files from KOReader device...")
-      (let* ((scp-command "scp -r -P 2222 root@192.0.2.10:/mnt/us/koreader/clipboard/ ~/Sync/Documents/koreader/")
+      (let* ((scp-command (format "scp -r -P %s %s %s"
+                                  sj/koreader-scp-port
+                                  sj/koreader-scp-source
+                                  (sj/sync "Documents/koreader/")))
              (exit-code (shell-command scp-command)))
         (unless (zerop exit-code)
           (user-error "Failed to sync files from KOReader device (exit code: %d)" exit-code))))
@@ -2752,7 +2808,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<koreader_config>>
 #+end_src
-#+begin_src emacs-lisp :tangle "~/Sync/docs/notes/denote_config.el" :noweb yes
+#+begin_src emacs-lisp :tangle (expand-file-name "docs/notes/denote_config.el" (or (bound-and-true-p sj/sync-dir) "~/Sync")) :noweb yes
   <<koreader_config>>
 #+end_src
 ** Ediff
@@ -3523,25 +3579,25 @@ One alternative can be to have a separate script to copy the required passwords 
     (setopt notmuch-show-logo nil)
 
     (setopt notmuch-saved-searches
-            '((:name "Inbox All"    :query "tag:inbox"                        :key "i" :sort-order newest-first)
-              (:name "Inbox GO"     :query "tag:inbox path:acme/**"     :key "g" :sort-order newest-first)
-              (:name "Unread"       :query "tag:unread"                       :key "u" :sort-order newest-first)
-              (:name "Sent"         :query "tag:sent"                         :key "s" :sort-order newest-first)
-              (:name "Flagged"      :query "tag:flagged"                      :key "f" :sort-order newest-first)
-              (:name "All mail"     :query "path:acme/**"               :key "a" :sort-order newest-first)))
+            `((:name "Inbox All"    :query "tag:inbox"                                :key "i" :sort-order newest-first)
+              (:name "Inbox GO"     :query ,(format "tag:inbox path:%s/**" sj/employer) :key "g" :sort-order newest-first)
+              (:name "Unread"       :query "tag:unread"                               :key "u" :sort-order newest-first)
+              (:name "Sent"         :query "tag:sent"                                 :key "s" :sort-order newest-first)
+              (:name "Flagged"      :query "tag:flagged"                              :key "f" :sort-order newest-first)
+              (:name "All mail"     :query ,(format "path:%s/**" sj/employer)          :key "a" :sort-order newest-first)))
 
     ;; Send via gmi (Gmail API — no SMTP/OAuth2 proxy needed)
     (setopt message-send-mail-function 'message-send-mail-with-sendmail)
     (setopt sendmail-program (executable-find "gmi"))
     (setopt message-sendmail-f-is-evil t)
     (setopt message-sendmail-extra-arguments
-            '("send" "--quiet" "-t" "-C" "/Users/srijan.c/Maildir/acme"))
+            `("send" "--quiet" "-t" "-C" ,(concat "/Users/srijan.c/Maildir/" sj/employer)))
     (setopt message-kill-buffer-on-exit t)
 
     ;; No FCC — gmi send stores in Gmail Sent, lieer pulls it back on next sync
     (setopt notmuch-fcc-dirs nil)
 
-    (setopt notmuch-identities '("Srijan Choudhary <you@work.example>"))
+    (setopt notmuch-identities (list (format "Srijan Choudhary <%s>" sj/mail-work)))
     (setopt notmuch-always-prompt-for-sender nil)
 
     ;; Prefer HTML
@@ -3559,7 +3615,7 @@ One alternative can be to have a separate script to copy the required passwords 
                   (message "Syncing mail...")
                   (set-process-sentinel
                    (start-process "gmi-sync" "*gmi-sync*" "/bin/sh" "-c"
-                                  "gmi sync -sv -C ~/Maildir/acme && gmi sync -sv -C ~/Maildir/srijan && notmuch new")
+                                  (format "gmi sync -sv -C ~/Maildir/%s && gmi sync -sv -C ~/Maildir/srijan && notmuch new" sj/employer))
                    (lambda (proc _event)
                      (when (= 0 (process-exit-status proc))
                        (notmuch-refresh-all-buffers)
@@ -3667,8 +3723,8 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure (:host github :repo "unmonoqueteclea/jira.el")
     :demand t
     :config
-    (setq jira-base-url "https://work.atlassian.example")
-    (setq jira-username "you@work.example")
+    (setq jira-base-url sj/jira-base-url)
+    (setq jira-username sj/mail-work)
     (setq jira-token-is-personal-access-token nil)
     (setq jira-api-version 3)
     ;; (setq jira-issues-table-fields
@@ -4095,10 +4151,10 @@ With prefix arg, refresh the tag cache first."
     )
   (use-package elfeed-protocol
     :custom
-    (elfeed-feeds '(("fever+https://srijan@miniflux.example.net"
-                     :api-url "https://miniflux.example.net/fever/"
+    (elfeed-feeds `((,(format "fever+https://srijan@%s" sj/miniflux-host)
+                     :api-url ,(format "https://%s/fever/" sj/miniflux-host)
                      :password (lambda ()
-                                 (auth-source-pick-first-password :host "miniflux.example.net" :user "fever")))))
+                                 (auth-source-pick-first-password :host sj/miniflux-host :user "fever")))))
     (elfeed-protocol-enabled-protocols '(fever))
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
@@ -4147,7 +4203,7 @@ With prefix arg, refresh the tag cache first."
     (setq slack-thread-also-send-to-room nil)
     ;;(setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
     (slack-register-team
-     :name "acme"
+     :name sj/employer
      :default t
      :modeline-enabled t
      :token (auth-source-pick-first-password
@@ -4285,11 +4341,11 @@ With prefix arg, refresh the tag cache first."
     (clatter-message-order 'oldest-first)
     (clatter-fill-column nil)
     (clatter-networks
-     '(
+     `(
        ("libera"
-        ;; The TLS cert is issued for irc.example.net only (no SAN for the
+        ;; The TLS cert is issued for the bouncer host only (no SAN for the
         ;; gamja. subdomain), though both names resolve to the same host.
-        :server "irc.example.net"
+        :server ,sj/irc-server
         :port 16502
         :tls t
         ;; Must match the nick soju already holds upstream: clatter sends a
@@ -4348,7 +4404,7 @@ With prefix arg, refresh the tag cache first."
     :ensure t
     :custom
     ;; -- Configuration goes here --
-    (hass-host "192.0.2.20")
+    (hass-host sj/hass-host)
     (hass-port 8123)
     (hass-insecure t)
     (hass-apikey (lambda () (auth-source-pick-first-password :host "HomeAssistant" :user "emacs-apikey")))

@@ -7,6 +7,10 @@ post-init.el
 .aider*
 .agent-shell/
 
+# Decrypted secrets — only the age-encrypted private.json.age is committed
+private.json
+private.dec.json
+
 # Package/build artifacts
 elpa/
 eln-cache/
