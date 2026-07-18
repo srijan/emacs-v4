@@ -3844,13 +3844,13 @@ One alternative can be to have a separate script to copy the required passwords 
   (when my-linux-p
     (use-package reader
       :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
-    	               :files ("*.el" "render-core.so")
-    	               :pre-build ("make" "all"))))
-  (when my-mac-p
-    (use-package reader
-      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
-    	               :files ("*.el" "render-core.dylib")
-    	               :pre-build ("make" "all"))))
+      	           :files ("*.el" "render-core.so")
+      	           :pre-build ("make" "all"))))
+  ;;  (when my-mac-p
+  ;;    (use-package reader
+  ;;      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
+  ;;    	               :files ("*.el" "render-core.dylib")
+  ;;    	               :pre-build ("make" "all"))))
 #+end_src
 ** Social and Browser
 *** EWW Browser
