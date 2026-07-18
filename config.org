@@ -1339,7 +1339,231 @@ One alternative can be to have a separate script to copy the required passwords 
   (setopt auth-sources '("~/.authinfo.gpg"))
   (setopt epg-pinentry-mode 'loopback)
 #+end_src
-** Org and gtd (org-gtd v4)
+** Org and gtd (v5) (WIP)
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (use-package org
+    :ensure nil
+    :demand t
+    :delight org-indent-mode
+    :custom
+    (org-support-shift-select t)
+    (org-ellipsis "…")
+    (org-startup-with-inline-images t)
+    (org-auto-align-tags nil)
+    (org-tags-column 0)
+    (org-catch-invisible-edits 'show-and-error)
+    (org-special-ctrl-a/e t)
+    (org-insert-heading-respect-content t)
+    (org-hide-emphasis-markers t)
+    (org-pretty-entities t)
+    (org-use-sub-superscripts '{})
+    (org-agenda-tags-column 0)
+    (org-log-into-drawer t)
+    (org-agenda-window-setup 'only-window)
+
+    (org-startup-folded 'nofold)
+    (org-startup-indented t)
+    :config
+    
+    ;; Clocking
+    (setopt org-clock-persist 'history)
+    (setopt org-log-into-drawer t)
+    (setopt org-log-done 'time)
+    (org-clock-persistence-insinuate)
+    (defun current-clock-time-to-file ()
+      (interactive)
+      (with-temp-file "~/.local/state/task"
+        (if (org-clocking-p)
+            (insert (org-clock-get-clock-string))
+          (insert "No Task"))))
+    (run-with-timer 1 60 'current-clock-time-to-file)
+    (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
+    (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
+
+    ;; Session.app (macOS focus timer) integration + cross-device state sync.
+    ;; On org-clock in/out we (a) drive the macOS Session timer via its session://
+    ;; URL scheme, and (b) write the current session to a Syncthing-synced JSON
+    ;; file so an Android home-screen widget can show the active task.  The
+    ;; session:// calls are a no-op off macOS; the state file is written everywhere.
+    (defun my/session-dispatch (url)
+      "Open a session:// URL via macOS `open' (no-op off macOS).
+  Uses `call-process' (not a shell string) so titles with quotes/special
+  chars are safe, and a destination of 0 so the clock hook never blocks."
+      (when (eq system-type 'darwin)
+        (call-process "open" nil 0 nil "-g" url)))
+
+    (defvar my/state-file "~/Sync/docs/org/state.json"
+      "Synced JSON file publishing Emacs context to an Android KWGT widget.
+  Written on org-clock in/out/cancel; read-only on the phone (via Syncthing),
+  where Tasker watches this file (File Modified event; a Syncthing write fires
+  both Closed-Write and Moved-To, so a single trigger type suffices) and fans
+  the keys out to KWGT globals.  Extensible: add keys to the published plist as
+  more contextual widgets are built.  Current shape:
+  {active, intent, category, started, started_kwgt}.")
+
+    (defun my/state-write (plist)
+      "Serialize PLIST to `my/state-file' as one JSON object.
+  Errors are swallowed so a sync/IO hiccup never breaks clocking."
+      (ignore-errors
+        (let ((file (expand-file-name my/state-file)))
+          (make-directory (file-name-directory file) t)
+          (with-temp-file file
+            (insert (json-serialize plist) "\n")))))
+
+    (defun my/session-clock-in ()
+      (let ((task-name (org-get-heading t t t t))
+            (category (or (org-entry-get nil "MW_AREA" t) "general")))
+        (my/state-write
+         (list :active t :intent task-name :category category
+               :started (format-time-string "%FT%T%z")
+               ;; Kustom-native date text (1955y11M12d22h04m00s) so KWGT's
+               ;; $tf()$/$df()$ can read it directly; ISO above is for humans.
+               :started_kwgt (format-time-string "%Yy%mM%dd%Hh%Mm%Ss")))
+        ;; (my/session-dispatch
+        ;;  (format "session:///start?intent=%s&categoryName=%s"
+        ;;          (url-encode-url task-name)
+        ;;          (url-encode-url category)))
+        ))
+
+    (defun my/session-clock-out ()
+      (my/state-write '(:active :false))
+      ;; (my/session-dispatch "session:///finish")
+      )
+
+    (defun my/session-clock-cancel ()
+      (my/state-write '(:active :false))
+      ;; (my/session-dispatch "session:///abandon")
+      )
+
+    (add-hook 'org-clock-in-hook #'my/session-clock-in)
+    (add-hook 'org-clock-out-hook #'my/session-clock-out)
+    (add-hook 'org-clock-cancel-hook #'my/session-clock-cancel)
+
+    (defun my-org-demote-title-to-body ()
+      "Move the current heading's title into the body, below the metadata.
+              Point returns to the heading for editing."
+      (interactive)
+      (org-back-to-heading t)
+      (let* ((element (org-element-at-point))
+             (title (org-element-property :raw-value element)))
+        (org-edit-headline "")
+        (save-excursion
+          (org-end-of-meta-data t)
+          (insert title "\n"))
+        (org-beginning-of-line)))
+    (defun my-org-shift-return ()
+      "On a heading, demote title to body. In a table, copy down. Otherwise, newline."
+      (interactive)
+      (cond
+       ((org-at-heading-p) (my-org-demote-title-to-body))
+       ((org-at-table-p) (org-table-copy-down 1))
+       (t (org-return))))
+    (define-key org-mode-map (kbd "S-<return>") #'my-org-shift-return)
+    )
+
+  (use-package mindwtr
+    :ensure nil
+    :load-path "~/workspace/srijan/mindwtr-emacs"
+    :after org
+    :mode ("/mindwtr\\.org\\'" . mindwtr-mode)
+    :commands (mindwtr-capture-template)
+    
+    :custom
+    (mindwtr-server-url "https://mindwtr.example.net")
+    (mindwtr-sync-interval 600)        ; periodic sync; nil to disable
+    (mindwtr-sync-idle-debounce 5)     ; debounce after save
+
+    :init
+    (setq mindwtr-file "~/Sync/docs/org/mindwtr.org")
+    (with-eval-after-load 'org
+      (add-to-list 'org-agenda-files mindwtr-file)
+      (add-to-list 'org-agenda-files "~/Sync/docs/org/misc.org")
+      )
+    (with-eval-after-load 'org-capture
+      (add-to-list 'org-capture-templates
+                   `("i" "Mindwtr inbox" entry
+                     (file+headline mindwtr-file "Inbox")
+                     (function mindwtr-capture-template)))
+      (add-to-list 'org-capture-templates
+                   `("l" "Mindwtr inbox w/ link" entry
+                     (file+headline mindwtr-file "Inbox")
+                     (function my/mindwtr-capture-template-with-link)))
+      )
+
+    (with-eval-after-load 'notmuch
+
+      (defun my/gmail-search-url (message-id &optional email)
+        "Build a Gmail search URL for MESSAGE-ID.
+           Optional EMAIL specifies which Gmail account."
+        (let ((base (if email
+                        (format "https://mail.google.com/mail/?authuser=%s" email)
+                      "https://mail.google.com/mail/")))
+          (concat base "#search/rfc822msgid:" message-id)))
+
+
+      (defun my/mindwtr-capture-template-with-link ()
+        "Like `mindwtr-capture-template' but appends both the notmuch link (%a)
+          and a Gmail search link for the same message."
+        (let ((gmail-link
+               (when (derived-mode-p 'notmuch-show-mode)
+                 (let* ((msgid (replace-regexp-in-string
+                                "^id:" ""
+                                (notmuch-show-get-message-id)))
+                        (email (or (notmuch-show-get-header :Delivered-To)
+                                   (notmuch-show-get-header :To)))
+                        (email (when email
+                                 (if (string-match "<\\([^>]+\\)>" email)
+                                     (match-string 1 email)
+                                   (string-trim email))))
+                        (url (my/gmail-search-url msgid email)))
+                   (format "[[%s][Gmail]]" url)))))
+          (concat (mindwtr-capture-template)
+                  "%a"
+                  (when gmail-link (concat " | " gmail-link))
+                  "\n%i\n"))))
+
+    (defun org-capture-inbox () (interactive) (org-capture nil "i"))
+    (defun org-capture-mail ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-capture nil "l"))
+    (defun mindwtr-open () (interactive) (find-file mindwtr-file))
+    
+    :config
+
+    (mindwtr-auto-sync-mode 1)
+    (mindwtr-agenda-setup)
+
+    :bind
+    (("C-c d e" . mindwtr-engage)
+     ("C-c d p" . mindwtr-projects)
+     ("C-c d k" . mindwtr-clarify)
+     ("C-c i"   . org-capture-inbox)
+     ("C-c j"   . mindwtr-open)
+     ("C-c l"   . org-store-link)
+     ("C-c S"   . mindwtr-sync)))
+
+  (use-package org-protocol
+    :ensure nil
+    :after org
+    :demand t
+    :custom
+    (org-protocol-default-template-key "l"))
+
+  (use-package org-modern
+    :after org
+    :demand t
+    :config
+    (global-org-modern-mode 1))
+
+  (use-package org-hide-drawers
+    :demand t
+    :after org
+    :config (org-hide-drawers-mode 1))
+
+#+end_src
+** COMMENT Org and gtd (org-gtd v4)
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
     :ensure nil
