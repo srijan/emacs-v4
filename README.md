@@ -207,6 +207,17 @@ The config's unconditional `(server-start)` matters on Android: the port's
 "open file", `org-protocol`, and `mailto:` handoffs all go through an
 `emacsclient` wrapper that only works when the Emacs server is already running.
 
+### On-screen toolbar
+
+Under `my-phone-p` the config loads a bottom Material-icon toolbar
+(`srijan-lisp/android-support.el`, ported from bohonghuang's `android-support.el`)
+that doubles as a chorded keyboard: arrow keys, `C-g`, undo/save/search, `M-x`,
+and modifier/prefix buttons (`C-c`/`C-x`/`M-g`/`M-s`) that compose real key
+sequences, plus six numbered quick-command slots. Edit
+`android-support-global-tool-bar-custom-commands` to change the slots (defaults:
+capture, GTD engage, new note, journal, GTD projects, browse notes). Icons come
+from the `material-pbm-icons` package (TrueType-independent PBM bitmaps).
+
 ### If Emacs won't start (recovery)
 
 Android has no command line, so a broken init (e.g. a bad tangle) can lock you
