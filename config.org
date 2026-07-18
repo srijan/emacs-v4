@@ -87,6 +87,11 @@ This file has the config that has to be loaded before the rest of the minimal-em
                                 :ref nil :depth 1 :inherit ignore
                                 :files (:defaults "elpaca-test.el" (:exclude "extensions"))
                                 :build (:not elpaca-activate)))
+  ;; (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+  ;;                               :ref "v0.1.0" :depth 1 :inherit ignore
+  ;;                               :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+  ;;                               :build (:not elpaca-activate)))
+
   (let* ((repo  (expand-file-name "elpaca/" elpaca-sources-directory))
          (build (expand-file-name "elpaca/" elpaca-builds-directory))
          (order (cdr elpaca-order))
@@ -224,6 +229,15 @@ TODO: Need to evaluate how much speedup this gives
       :disabled
       :ensure (:host github :repo "nohzafk/emacs-anywhere")
       :demand t)
+
+    (use-package quake-frame
+      :demand t
+      :ensure (:host codeberg :repo "ctietze/quake-frame.el")
+      :custom
+      (quake-frame-height 0.6)
+      (quake-frame-position 'top)
+      (quake-frame-offset-y 20)
+      )
     )
 #+end_src
 ** Misc config
@@ -2460,6 +2474,7 @@ One alternative can be to have a separate script to copy the required passwords 
 ** Hyperbole / Dashboard
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package hyperbole
+    :disabled
     :demand t)
 
 #+end_src
@@ -4855,4 +4870,3 @@ With prefix arg, refresh the tag cache first."
   (provide 'koreader-json-to-org)
   ;;; koreader-json-to-org.el ends here
 #+end_src
-
