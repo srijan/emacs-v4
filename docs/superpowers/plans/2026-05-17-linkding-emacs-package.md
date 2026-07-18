@@ -64,6 +64,9 @@ Create `~/src/linkding.el/linkding.el`:
 (require 'tabulated-list)
 (require 'cl-lib)
 
+;; External variables (declared to satisfy byte-compiler and package-lint).
+(defvar eww-data)
+
 ;;;; Customization
 
 (defgroup linkding nil
@@ -432,6 +435,9 @@ Add to `linkding.el` after the API wrappers:
     (setq linkding--tags (linkding--fetch-tags-sync)))
   linkding--tags)
 
+;; Forward declaration — defined in the list-mode section below.
+(declare-function linkding--list-refresh "linkding")
+
 (defun linkding-refresh ()
   "Re-fetch bookmarks and tags from Linkding, update any live *linkding* buffer."
   (interactive)
@@ -478,44 +484,45 @@ Add to `tests/linkding-tests.el`:
 ;;; Filter parser
 
 (ert-deftest linkding-parse-filter-empty ()
-  (let ((result (linkding--parse-filter "")))
-    (should (null (car result)))
-    (should (null (cdr result)))))
+  (should (equal (linkding--parse-filter "") '(nil nil nil))))
 
 (ert-deftest linkding-parse-filter-unread ()
-  (let* ((result (linkding--parse-filter "+unread"))
-         (params (car result)))
+  (cl-destructuring-bind (params include exclude) (linkding--parse-filter "+unread")
     (should (member '("is_unread" "yes") params))
-    (should (null (cdr result)))))
+    (should (null include))
+    (should (null exclude))))
 
 (ert-deftest linkding-parse-filter-archived ()
-  (let* ((result (linkding--parse-filter "+archived"))
-         (params (car result)))
+  (cl-destructuring-bind (params _i _e) (linkding--parse-filter "+archived")
     (should (member '("is_archived" "yes") params))))
 
 (ert-deftest linkding-parse-filter-include-tag ()
-  (let* ((result (linkding--parse-filter "+emacs"))
-         (params (car result)))
+  (cl-destructuring-bind (params _i _e) (linkding--parse-filter "+emacs")
     (should (member '("tag" "emacs") params))))
 
+(ert-deftest linkding-parse-filter-multiple-include-tags ()
+  "Second +TAG is added to client-side INCLUDE list, not EXCLUDE."
+  (cl-destructuring-bind (params include exclude)
+      (linkding--parse-filter "+emacs +lisp")
+    (should (member '("tag" "emacs") params))
+    (should (member "lisp" include))
+    (should-not (member "lisp" exclude))))
+
 (ert-deftest linkding-parse-filter-exclude-tag ()
-  (let* ((result (linkding--parse-filter "-emacs"))
-         (excludes (cdr result)))
-    (should (member "emacs" excludes))))
+  (cl-destructuring-bind (_p _i exclude) (linkding--parse-filter "-emacs")
+    (should (member "emacs" exclude))))
 
 (ert-deftest linkding-parse-filter-query ()
-  (let* ((result (linkding--parse-filter "hello world"))
-         (params (car result)))
+  (cl-destructuring-bind (params _i _e) (linkding--parse-filter "hello world")
     (should (member '("q" "hello world") params))))
 
 (ert-deftest linkding-parse-filter-combined ()
   "+unread +emacs -python foo"
-  (let* ((result (linkding--parse-filter "+unread +emacs -python foo"))
-         (params (car result))
-         (excludes (cdr result)))
+  (cl-destructuring-bind (params _i exclude)
+      (linkding--parse-filter "+unread +emacs -python foo")
     (should (member '("is_unread" "yes") params))
     (should (member '("tag" "emacs") params))
-    (should (member "python" excludes))
+    (should (member "python" exclude))
     (should (member '("q" "foo") params))))
 ```
 
@@ -526,9 +533,9 @@ cd ~/src/linkding.el
 emacs --batch -l tests/linkding-tests.el -f ert-run-tests-batch-and-exit
 ```
 
-Expected: 7 failures.
+Expected: 8 failures.
 
-- [ ] **Step 3: Implement `linkding--parse-filter`**
+- [ ] **Step 3: Implement `linkding--parse-filter` and `linkding--apply-client-filters`**
 
 Add to `linkding.el` after the cache section:
 
@@ -536,18 +543,21 @@ Add to `linkding.el` after the cache section:
 ;;;; Filter Parser
 
 (defun linkding--parse-filter (filter-string)
-  "Parse elfeed-style FILTER-STRING into (API-PARAMS . EXCLUDE-TAGS).
+  "Parse elfeed-style FILTER-STRING into (API-PARAMS INCLUDE-TAGS EXCLUDE-TAGS).
 API-PARAMS is a list of (KEY VALUE) pairs for `url-build-query-string'.
-EXCLUDE-TAGS is a list of tag name strings for client-side filtering.
+INCLUDE-TAGS is a list of additional tag names beyond the first +TAG, applied
+as a client-side AND filter (Linkding's API only honors one `tag' param).
+EXCLUDE-TAGS is a list of tag names to remove client-side.
 
 Tokens:
   +unread   → is_unread=yes API param
   +archived → is_archived=yes API param
-  +TAG      → tag=TAG API param (first +TAG only; extras filtered client-side)
-  -TAG      → exclude TAG client-side
+  +TAG      → first one becomes the API `tag' param; extras go into INCLUDE-TAGS
+  -TAG      → added to EXCLUDE-TAGS
   WORD      → appended to q= API param"
   (let ((tokens (split-string (string-trim filter-string)))
         (api-params '())
+        (include-tags '())
         (exclude-tags '())
         (query-parts '())
         (tag-param-set nil))
@@ -560,7 +570,7 @@ Tokens:
        ((string-prefix-p "+" token)
         (let ((tag (substring token 1)))
           (if tag-param-set
-              (push tag exclude-tags)
+              (push tag include-tags)
             (push `("tag" ,tag) api-params)
             (setq tag-param-set t))))
        ((string-prefix-p "-" token)
@@ -569,7 +579,19 @@ Tokens:
         (push token query-parts))))
     (when query-parts
       (push `("q" ,(string-join (nreverse query-parts) " ")) api-params))
-    (cons api-params exclude-tags)))
+    (list api-params include-tags exclude-tags)))
+
+(defun linkding--apply-client-filters (bookmarks include-tags exclude-tags)
+  "Return BOOKMARKS filtered by INCLUDE-TAGS (AND) and EXCLUDE-TAGS."
+  (if (and (null include-tags) (null exclude-tags))
+      bookmarks
+    (cl-remove-if-not
+     (lambda (bm)
+       (let ((tags (alist-get 'tag_names bm)))
+         (and (cl-every (lambda (tag) (cl-find tag tags :test #'string=))
+                        include-tags)
+              (not (cl-intersection exclude-tags tags :test #'string=)))))
+     bookmarks)))
 ```
 
 - [ ] **Step 4: Run tests to confirm they pass**
@@ -647,14 +669,16 @@ Add to `linkding.el` after the filter parser section:
   (when (derived-mode-p 'eww-mode)
     (plist-get eww-data :title)))
 
-(defun linkding-add-bookmark (&optional prefix)
+(defun linkding-add-bookmark (&optional url-arg title-arg prefix)
   "Save a bookmark to Linkding.
-In an EWW buffer, captures URL and title automatically.
-Elsewhere, reads URL from `thing-at-point' or prompts.
+Optional URL-ARG and TITLE-ARG let elisp callers bypass auto-detection
+(e.g. for an `org-capture' template). When unset, runs context detection:
+in an EWW buffer, captures URL and title from `eww-data' automatically;
+elsewhere, reads URL from `thing-at-point' or prompts.
 With PREFIX arg (\\[universal-argument]), also prompts for description and unread status."
-  (interactive "P")
-  (let* ((detected-url (linkding--detect-url))
-         (detected-title (linkding--detect-title))
+  (interactive (list nil nil current-prefix-arg))
+  (let* ((detected-url (or url-arg (linkding--detect-url)))
+         (detected-title (or title-arg (linkding--detect-title)))
          (url (or detected-url
                   (read-string "URL: ")))
          (title (read-string "Title: " detected-title))
@@ -670,10 +694,15 @@ With PREFIX arg (\\[universal-argument]), also prompts for description and unrea
                    ,@(when prefix `((is_unread . ,(if is-unread t :json-false)))))))
     (linkding--create-bookmark
      fields
-     (lambda (_)
+     (lambda (created)
        (message "linkding: saved <%s>" url)
-       (when linkding--bookmarks
-         (linkding-refresh))))))
+       ;; Insert into the local cache instead of refetching everything.
+       (when (and created linkding--bookmarks)
+         (push created linkding--bookmarks))
+       ;; Refresh any live list buffer so the new bookmark shows up there too.
+       (when-let ((buf (get-buffer "*linkding*")))
+         (with-current-buffer buf
+           (linkding--list-refresh)))))))
 ```
 
 - [ ] **Step 4: Run tests**
@@ -776,21 +805,14 @@ With prefix arg REFRESH, re-fetch bookmarks first."
 (defun linkding-search (filter)
   "Search Linkding with elfeed-style FILTER string and open a result."
   (interactive "sFilter: ")
-  (let* ((parsed (linkding--parse-filter filter))
-         (api-params (car parsed))
-         (exclude-tags (cdr parsed))
-         (bookmarks (linkding--fetch-bookmarks-sync api-params))
-         (filtered (if exclude-tags
-                       (cl-remove-if
-                        (lambda (bm)
-                          (cl-intersection exclude-tags
-                                           (alist-get 'tag_names bm)
-                                           :test #'string=))
-                        bookmarks)
-                     bookmarks))
-         (candidates (linkding--candidates-from filtered))
-         (chosen (completing-read "Bookmark: " candidates nil t)))
-    (linkding--open-candidate chosen)))
+  (cl-destructuring-bind (api-params include-tags exclude-tags)
+      (linkding--parse-filter filter)
+    (let* ((bookmarks (linkding--fetch-bookmarks-sync api-params))
+           (filtered (linkding--apply-client-filters
+                      bookmarks include-tags exclude-tags))
+           (candidates (linkding--candidates-from filtered))
+           (chosen (completing-read "Bookmark: " candidates nil t)))
+      (linkding--open-candidate chosen))))
 ```
 
 - [ ] **Step 4: Run tests**
@@ -854,6 +876,9 @@ Add to `linkding.el` after the quick search section:
 ```elisp
 ;;;; Tabulated List Mode
 
+;; Forward declaration — defined in the edit section below.
+(declare-function linkding-edit-bookmark "linkding")
+
 (defun linkding--make-entry (bookmark)
   "Convert BOOKMARK alist into a `tabulated-list-mode' entry."
   (let* ((id (alist-get 'id bookmark))
@@ -878,45 +903,37 @@ Add to `linkding.el` after the quick search section:
 
 (defun linkding--list-refresh ()
   "Re-fetch bookmarks for the active filter and repopulate this buffer."
-  (let* ((filter (linkding--parse-filter linkding--active-filter))
-         (api-params (car filter))
-         (exclude-tags (cdr filter))
-         (bookmarks (linkding--fetch-bookmarks-sync api-params))
-         (filtered (if exclude-tags
-                       (cl-remove-if
-                        (lambda (bm)
-                          (cl-intersection exclude-tags
-                                           (alist-get 'tag_names bm)
-                                           :test #'string=))
-                        bookmarks)
-                     bookmarks)))
-    (setq linkding--list-bookmarks filtered)
-    (setq tabulated-list-entries (mapcar #'linkding--make-entry filtered))
-    (tabulated-list-print t)
-    (message "linkding: %d bookmarks" (length filtered))))
-
-(defvar linkding-list-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") #'linkding-list-open)
-    (define-key map (kbd "r")   #'linkding-list-toggle-unread)
-    (define-key map (kbd "A")   #'linkding-list-toggle-archived)
-    (define-key map (kbd "e")   #'linkding-list-edit)
-    (define-key map (kbd "d")   #'linkding-list-delete)
-    (define-key map (kbd "s")   #'linkding-list-set-filter)
-    (define-key map (kbd "S")   #'linkding-list-saved-search)
-    (define-key map (kbd "g")   #'linkding-list-refresh)
-    (define-key map (kbd "q")   #'quit-window)
-    map)
-  "Keymap for `linkding-list-mode'.")
+  (cl-destructuring-bind (api-params include-tags exclude-tags)
+      (linkding--parse-filter linkding--active-filter)
+    (let* ((bookmarks (linkding--fetch-bookmarks-sync api-params))
+           (filtered (linkding--apply-client-filters
+                      bookmarks include-tags exclude-tags)))
+      (setq linkding--list-bookmarks filtered)
+      (setq tabulated-list-entries (mapcar #'linkding--make-entry filtered))
+      (tabulated-list-print t)
+      (message "linkding: %d bookmarks" (length filtered)))))
 
 (define-derived-mode linkding-list-mode tabulated-list-mode "Linkding"
-  "Major mode for browsing Linkding bookmarks."
+  "Major mode for browsing Linkding bookmarks.
+\\{linkding-list-mode-map}"
   (setq tabulated-list-format
         [("U" 1 t) ("Title" 40 t) ("Tags" 25 nil) ("Date" 10 t)])
   (setq tabulated-list-padding 1)
   (setq tabulated-list-sort-key '("Date" . t))
-  (tabulated-list-init-header)
-  (use-local-map linkding-list-mode-map))
+  (tabulated-list-init-header))
+
+;; `define-derived-mode' auto-creates `linkding-list-mode-map' with the
+;; tabulated-list-mode parent keymap, so motion keys like `n'/`p' work.
+;; We just layer our bindings on top.
+(define-key linkding-list-mode-map (kbd "RET") #'linkding-list-open)
+(define-key linkding-list-mode-map (kbd "r")   #'linkding-list-toggle-unread)
+(define-key linkding-list-mode-map (kbd "A")   #'linkding-list-toggle-archived)
+(define-key linkding-list-mode-map (kbd "e")   #'linkding-edit-bookmark)
+(define-key linkding-list-mode-map (kbd "d")   #'linkding-list-delete)
+(define-key linkding-list-mode-map (kbd "s")   #'linkding-list-set-filter)
+(define-key linkding-list-mode-map (kbd "S")   #'linkding-list-saved-search)
+(define-key linkding-list-mode-map (kbd "g")   #'linkding-list-refresh)
+(define-key linkding-list-mode-map (kbd "q")   #'quit-window)
 
 (defvar-local linkding--active-filter ""
   "Active elfeed-style filter string for this linkding-list buffer.")
@@ -998,6 +1015,35 @@ Add to `linkding.el` after the list mode section:
       (funcall linkding-open-fn (alist-get 'url bm))
     (user-error "linkding: no bookmark at point")))
 
+(defun linkding--update-cached-bookmark (id updated)
+  "Replace the cached `linkding--bookmarks' entry for ID with UPDATED, if cached."
+  (when (and updated linkding--bookmarks)
+    (setq linkding--bookmarks
+          (cl-substitute-if (append updated nil)
+                            (lambda (b) (equal (alist-get 'id b) id))
+                            linkding--bookmarks))))
+
+(defun linkding--list-replace-row (buffer id updated)
+  "Swap the row for bookmark ID in BUFFER for one built from UPDATED.
+Looks the row up by ID (not by current point) so callers don't have to
+remain on the row while async work completes. Also updates `linkding--bookmarks'."
+  (linkding--update-cached-bookmark id updated)
+  (when (and updated (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (let* ((new-bm (append updated nil))
+             (new-entry (linkding--make-entry new-bm))
+             (pos (point)))
+        (setq linkding--list-bookmarks
+              (cl-substitute-if new-bm
+                                (lambda (b) (equal (alist-get 'id b) id))
+                                linkding--list-bookmarks))
+        (setq tabulated-list-entries
+              (cl-substitute-if new-entry
+                                (lambda (entry) (equal (car entry) id))
+                                tabulated-list-entries))
+        (tabulated-list-print t)
+        (goto-char pos)))))
+
 (defun linkding--list-patch-at-point (fields)
   "PATCH bookmark at point with FIELDS alist. Refreshes the row on success."
   (if-let ((bm (linkding--bookmark-at-point)))
@@ -1006,22 +1052,7 @@ Add to `linkding.el` after the list mode section:
         (linkding--update-bookmark
          id fields
          (lambda (updated)
-           (when (and updated (buffer-live-p buf))
-             (with-current-buffer buf
-               (let* ((new-bm (append updated nil))
-                      (new-entry (linkding--make-entry new-bm))
-                      (pos (point)))
-                 (setq linkding--list-bookmarks
-                       (cl-substitute-if new-bm
-                                         (lambda (b) (equal (alist-get 'id b) id))
-                                         linkding--list-bookmarks))
-                 (setq tabulated-list-entries
-                       (cl-substitute new-entry
-                                      (tabulated-list-get-entry)
-                                      tabulated-list-entries
-                                      :key #'cadr :test #'equal))
-                 (tabulated-list-print t)
-                 (goto-char pos)))))))
+           (linkding--list-replace-row buf id updated))))
     (user-error "linkding: no bookmark at point")))
 
 (defun linkding-list-toggle-unread ()
@@ -1162,18 +1193,28 @@ When called interactively elsewhere, prompts via `completing-read'."
            (new-desc (read-string "Description: " orig-desc))
            (new-unread (y-or-n-p (format "Unread? (currently %s) "
                                          (if orig-unread "yes" "no"))))
-           (fields `((title . ,new-title)
-                     (tag_names . ,(vconcat new-tags))
-                     (description . ,new-desc)
-                     (is_unread . ,(if new-unread t :json-false))))
+           ;; Build the PATCH payload with only the fields that actually changed.
+           (fields (append
+                    (unless (equal new-title orig-title)
+                      `((title . ,new-title)))
+                    (unless (equal new-tags orig-tags)
+                      `((tag_names . ,(vconcat new-tags))))
+                    (unless (equal new-desc orig-desc)
+                      `((description . ,new-desc)))
+                    (unless (eq new-unread orig-unread)
+                      `((is_unread . ,(if new-unread t :json-false))))))
            (buf (when (derived-mode-p 'linkding-list-mode) (current-buffer))))
-      (linkding--update-bookmark
-       id fields
-       (lambda (updated)
-         (message "linkding: updated <%s>" (alist-get 'url bm))
-         (when (and updated buf (buffer-live-p buf))
-           (with-current-buffer buf
-             (linkding--list-refresh))))))))
+      (if (null fields)
+          (message "linkding: no changes")
+        (linkding--update-bookmark
+         id fields
+         (lambda (updated)
+           (message "linkding: updated <%s>" (alist-get 'url bm))
+           ;; In-place row swap when called from a list buffer (matches the spec's
+           ;; "refreshes list row in place"); cache update happens regardless.
+           (if buf
+               (linkding--list-replace-row buf id updated)
+             (linkding--update-cached-bookmark id updated))))))))
 ```
 
 - [ ] **Step 2: Verify the file loads**
@@ -1365,7 +1406,7 @@ git commit -m "docs: add README and CHANGELOG"
 
 - [ ] **Step 1: Load the package during development by adding to load-path**
 
-In `~/.emacs.d/config.org`, replace the entire `*** Linkding` section (the `#+begin_src` block added earlier) with:
+In `~/.emacs.d/config.org`, replace the entire existing `*** Linkding` section (a prototype with `sj-linkding-*` functions that lives around line 3659 — verify with `grep -n "^\*\*\* Linkding" config.org` before editing) with the block below. If no such section exists, add this under a suitable parent heading instead:
 
 ```org
 *** Linkding
@@ -1416,4 +1457,8 @@ git commit -m "config: wire linkding.el package into Emacs config"
 
 - [x] **Spec coverage:** All spec sections have corresponding tasks: config (Task 1), HTTP (Task 2), API wrappers (Task 3), cache (Task 4), filter (Task 5), capture (Task 6), quick search (Task 7), tabulated list (Task 8), keybindings/actions (Task 9), edit (Task 10), embark (Task 11), docs (Task 12), config wiring (Task 13).
 - [x] **No placeholders:** All tasks contain full code.
-- [x] **Type consistency:** `linkding--make-entry` uses `alist-get 'tag_names` (list of strings, matching API wrapper output). `linkding--bookmark-at-point` looks up from `linkding--list-bookmarks` (set in `linkding--list-refresh`). `linkding--list-patch-at-point` referenced before definition — reorder: Task 9 defines it, referenced from same task. `linkding--candidates-from` defined in Task 7, used in Tasks 6 (edit) and 10 — correct. `linkding--list-refresh` referenced in Task 4 (`linkding-refresh`) but defined in Task 8 — note: this is a forward reference; the function call only happens at runtime so load order is fine. ✓
+- [x] **Type consistency:** `linkding--make-entry` uses `alist-get 'tag_names` (list of strings, matching API wrapper output). `linkding--bookmark-at-point` looks up from `linkding--list-bookmarks` (set in `linkding--list-refresh`). `linkding--candidates-from` defined in Task 7, used in Task 10 — correct.
+- [x] **Forward references guarded:** `linkding--list-refresh` (defined in Task 8) is referenced in Tasks 4 and 6 — guarded by a `declare-function` in Task 4. `linkding-edit-bookmark` (defined in Task 10) is referenced in the Task 8 keymap — guarded by a `declare-function` in Task 8. Task 10's `linkding-edit-bookmark` calls `linkding--list-replace-row` / `linkding--update-cached-bookmark` (Task 9, earlier in load order — no forward ref needed). All such calls happen at runtime, after the whole file is loaded.
+- [x] **Filter parser:** Multiple `+TAG` tokens correctly compose — first becomes the API `tag` param, the rest go through `linkding--apply-client-filters` as a client-side AND. `-TAG` tokens are exclude-filters. Return shape is `(API-PARAMS INCLUDE-TAGS EXCLUDE-TAGS)`.
+- [x] **Keymap inheritance:** `linkding-list-mode-map` is the one auto-generated by `define-derived-mode`, so it inherits motion keys (`n`/`p` etc.) from `tabulated-list-mode-map` as the spec requires. Custom keys are layered on top with `define-key` after the mode definition.
+- [x] **MELPA lint hygiene:** `eww-data` is declared with `(defvar eww-data)` at the top of the file to suppress free-variable warnings in `linkding--detect-url`.
