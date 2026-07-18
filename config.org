@@ -695,8 +695,11 @@ from the Phone block via =material-pbm-icons= (see below). Design:
     "Turn on the Android on-screen toolbar."
     (setq tool-bar-position 'bottom)
     (when (fboundp 'modifier-bar-mode) (modifier-bar-mode 1))
-    (dolist (hook '(prog-mode-hook text-mode-hook special-mode-hook compilation-mode-hook))
-      (add-hook hook #'android-support-kill-local-tool-bar-map))
+    ;; Make the global toolbar win in every buffer: drop any buffer-local
+    ;; `tool-bar-map' that a major mode installs (e.g. the elfeed toolbars).
+    ;; `after-change-major-mode-hook' runs after each mode's own hook, so it
+    ;; neutralises mode-specific toolbars that would otherwise override ours.
+    (add-hook 'after-change-major-mode-hook #'android-support-kill-local-tool-bar-map)
     (android-support-setup-bindings)
     (android-support-global-tool-bar-setup))
 
