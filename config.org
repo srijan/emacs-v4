@@ -1745,8 +1745,7 @@ One alternative can be to have a separate script to copy the required passwords 
     )
 
   (use-package mindwtr
-    :ensure nil
-    :load-path "~/workspace/srijan/mindwtr-emacs"
+    :ensure (:host github :repo "srijan/mindwtr-emacs")
     :after org
     :mode ("/mindwtr\\.org\\'" . mindwtr-mode)
     :commands (mindwtr-capture-template)
