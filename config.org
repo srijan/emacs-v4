@@ -191,16 +191,26 @@ the placeholders instead of breaking.
     "age identity (private key) used to decrypt `sj/private-file'.")
 
   (defvar sj/private-file
-    (expand-file-name "private.json.age" user-emacs-directory)
+    ;; Anchor to the repo root (minimal-emacs-user-directory), NOT
+    ;; user-emacs-directory: pre-early-init redirects the latter to var/, but
+    ;; private.json.age is committed at the repo root.
+    (expand-file-name "private.json.age" minimal-emacs-user-directory)
     "age-encrypted JSON holding the real values of the sj/* identifiers.")
 
   (defun sj/load-private ()
     "Decrypt `sj/private-file' with age and set the sj/* variables it holds.
   A no-op (with a warning) when age or the identity is unavailable, so startup
   never breaks on a machine without the key."
-    (when (and (executable-find "age")
-               (file-readable-p sj/private-file)
-               (file-readable-p sj/age-identity))
+    (cond
+     ((not (executable-find "age"))
+      (message "sj/load-private: `age' not on PATH; using placeholders"))
+     ((not (file-readable-p sj/private-file))
+      (message "sj/load-private: %s not readable; using placeholders"
+               sj/private-file))
+     ((not (file-readable-p sj/age-identity))
+      (message "sj/load-private: identity %s not readable; using placeholders"
+               sj/age-identity))
+     (t
       (condition-case err
           (let ((json (with-temp-buffer
                         (unless (zerop (call-process "age" nil t nil "-d"
@@ -211,7 +221,7 @@ the placeholders instead of breaking.
                         (json-parse-buffer :object-type 'alist))))
             (dolist (pair json)
               (set (car pair) (cdr pair))))
-        (error (message "sj/load-private: %s" (error-message-string err))))))
+        (error (message "sj/load-private: %s" (error-message-string err)))))))
 
   (sj/load-private)
 #+end_src
@@ -2768,9 +2778,13 @@ One alternative can be to have a separate script to copy the required passwords 
     (denote-rename-buffer-mode t)
     (denote-prompts '(title keywords))
     (denote-templates
-     `((weekly-review . ,(f-read (expand-file-name
-                                  "weekly-review.md"
-                                  my-templates-dir)))
+     ;; Built-in read instead of `f-read' (the `f' library isn't guaranteed
+     ;; loaded, e.g. on Android), and degrade to "" if the template is missing.
+     `((weekly-review
+        . ,(let ((tmpl (expand-file-name "weekly-review.md" my-templates-dir)))
+             (if (file-readable-p tmpl)
+                 (with-temp-buffer (insert-file-contents tmpl) (buffer-string))
+               "")))
        (journal . "")))
     :config
     (defun my-weekly-review-journal ()
@@ -2990,6 +3004,9 @@ One alternative can be to have a separate script to copy the required passwords 
 ** Dictionary and spelling
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package jinx
+    ;; Jinx compiles a C module on first load; Android has no C compiler, so it
+    ;; errors and can abort org-capture (text-mode -> org-mode -> jinx-mode).
+    :if (not my-phone-p)
     :delight
     :hook (text-mode . jinx-mode)
     :bind ("M-$" . jinx-correct)
