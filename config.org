@@ -1611,7 +1611,10 @@ One alternative can be to have a separate script to copy the required passwords 
     :demand t
     :config
     (auth-source-1password-enable))
-  (setopt auth-sources '("~/.authinfo.gpg"))
+  ;; On Android, use a plaintext ~/.authinfo instead of GPG: the app-private
+  ;; home (/data/data/org.gnu.emacs/files) is sandboxed to Emacs, and this
+  ;; sidesteps the GPG/pinentry setup Termux would otherwise need.
+  (setopt auth-sources (if my-phone-p '("~/.authinfo") '("~/.authinfo.gpg")))
   (setopt epg-pinentry-mode 'loopback)
 #+end_src
 ** Org and gtd (v5) (WIP)
