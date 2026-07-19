@@ -525,9 +525,13 @@ TODO: Need to evaluate how much speedup this gives
     (load-theme 'modus-operandi-tinted t)
     ;; Guard the font: `set-frame-font' signals an error if the family is not
     ;; installed (likely on Android), which would abort the rest of this block.
-    (when (find-font (font-spec :name "Aporetic Sans Mono"))
-      (set-frame-font "Aporetic Sans Mono-17" nil t)
-      (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17")))
+    ;; Prefer JetBrains Mono (as on macOS), fall back to Aporetic Sans Mono.
+    ;; Guarded: `set-frame-font' errors if the family is not installed.
+    (let ((font (seq-find (lambda (f) (find-font (font-spec :name f)))
+                          '("JetBrains Mono" "Aporetic Sans Mono"))))
+      (when font
+        (set-frame-font (format "%s-17" font) nil t)
+        (add-to-list 'default-frame-alist (cons 'font (format "%s-17" font)))))
     (tool-bar-mode 1)
     (setopt tool-bar-position 'bottom)
     (setopt tool-bar-button-margin 20)
