@@ -529,8 +529,7 @@ TODO: Need to evaluate how much speedup this gives
       (set-frame-font "Aporetic Sans Mono-17" nil t)
       (add-to-list 'default-frame-alist '(font . "Aporetic Sans Mono-17")))
     (tool-bar-mode 1)
-    ;; (modifier-bar-mode 1)
-    (setopt tool-bar-position 'top)
+    (setopt tool-bar-position 'bottom)
     (setopt tool-bar-button-margin 20)
     (setopt touch-screen-display-keyboard t)
     (setopt touch-screen-precision-scroll t)
@@ -542,7 +541,170 @@ TODO: Need to evaluate how much speedup this gives
       (load "touchpad")
       (touchpad-scroll-mode)
       (setq touchpad-pixel-scroll t))
+    ;; On-screen toolbar acting as a chorded keyboard.
+    ;; material-pbm-icons adds its pbm/ dir to `image-load-path' on load, so
+    ;; enable the toolbar from its :config, once the icons are resolvable.
+    (use-package material-pbm-icons
+      :ensure (:host github :repo "bohonghuang/material-pbm-icons" :files ("*.el" "pbm"))
+      :demand t
+      :config
+      (condition-case err
+          (progn
+            (require 'android-support)
+            (android-support-enable))
+        (error (message "android-support: %s" (error-message-string err)))))
     )
+#+end_src
+*** Android on-screen toolbar
+Ported from [[https://github.com/bohonghuang/.emacs.d/blob/master/modules/android-support.el][bohonghuang's android-support.el]]. Provides a bottom toolbar of
+Material-icon buttons that double as a chorded keyboard (via
+=key-translation-map=), plus six user-configurable quick-command slots. Loaded
+from the Phone block via =material-pbm-icons= (see below). Design:
+[[file:docs/superpowers/specs/2026-07-18-android-toolbar-design.md]].
+#+begin_src emacs-lisp :tangle "srijan-lisp/android-support.el"
+  ;;; android-support.el --- On-screen toolbar for Emacs on Android  -*- lexical-binding: t; -*-
+  ;; Tangled from config.org. DO NOT EDIT.
+  ;; Adapted from https://github.com/bohonghuang/.emacs.d (modules/android-support.el).
+  (require 'cl-lib)
+
+  (defgroup android-support nil
+    "On-screen toolbar for Emacs on Android."
+    :group 'environment)
+
+  ;;;; Helper commands
+  (defun android-support-kill-buffer (arg)
+    "Kill the current buffer; with a prefix ARG >= 4 also kill its window."
+    (interactive "p")
+    (cond
+     ((>= arg 4) (kill-buffer-and-window))
+     ((>= arg 1) (kill-buffer))))
+
+  (defun android-support-save-buffer ()
+    "Save the current file buffer, or `save-some-buffers' elsewhere."
+    (interactive)
+    (if (and (buffer-modified-p)
+             (or (derived-mode-p 'prog-mode) (derived-mode-p 'text-mode)))
+        (save-buffer)
+      (save-some-buffers)))
+
+  (defun android-support-toggle-touch-screen-keyboard ()
+    "Toggle the on-screen keyboard."
+    (interactive)
+    (message
+     "Touch screen keyboard %s"
+     (if (setf touch-screen-display-keyboard (not touch-screen-display-keyboard))
+         "enabled" "disabled")))
+
+  ;;;; Six configurable quick-command slots
+  (defcustom android-support-global-tool-bar-custom-commands
+    '(org-capture-inbox
+      mindwtr-engage
+      my/denote-inbox-note
+      denote-journal-new-or-existing-entry
+      mindwtr-projects
+      consult-notes)
+    "Commands bound to the six numbered buttons on the Android tool bar."
+    :type '(repeat function)
+    :group 'android-support)
+
+  (defmacro android-support--define-custom-commands (n)
+    "Define N wrapper commands that call the Nth entry of the slots list."
+    `(progn . ,(cl-with-gensyms (command)
+                 (cl-loop for i from 1 to n
+                          collect `(defun ,(intern (format "%s-%d" 'android-support-global-tool-bar-custom-command i)) ()
+                                     (interactive)
+                                     (when-let* ((,command (nth ,(1- i) android-support-global-tool-bar-custom-commands)))
+                                       (if (commandp ,command)
+                                           (call-interactively ,command)
+                                         (message "android-support: `%s' is not available" ,command))))))))
+  (android-support--define-custom-commands 6)
+
+  ;;;; The icon/command grid
+  (defconst android-support-global-tool-bar-items
+    ;; Grouped for a single-row layout: arrows, then edit/buffer actions,
+    ;; then quit + prefix/chord keys, then the six numbered slots.
+    '(;; navigation (hjkl order)
+      ("arrow-left" backward-char)
+      ("arrow-down" next-line)
+      ("arrow-up" previous-line)
+      ("arrow-right" forward-char)
+      ;; edit / buffer
+      ("arrow-u-left-top" undo)
+      ("arrow-collapse-right" indent-for-tab-command)
+      ("content-save-outline" android-support-save-buffer save-buffer)
+      ("file-replace-outline" consult-buffer switch-to-buffer)
+      ;; quit, direct M-x, and prefix/chord keys
+      ("close-outline" keyboard-quit)
+      ("console" execute-extended-command tool-bar-mx) ; one-tap M-x
+      ("plus-circle-multiple-outline" universal-argument)
+      ("circle-multiple-outline" execute-extended-command)
+      ("close-circle-multiple-outline" exchange-point-and-mark)
+      ("menu" imenu)
+      ("magnify" isearch-forward)
+      ;; numbered quick-command slots 1-6
+      ("numeric-1-circle-outline" android-support-global-tool-bar-custom-command-1)
+      ("numeric-2-circle-outline" android-support-global-tool-bar-custom-command-2)
+      ("numeric-3-circle-outline" android-support-global-tool-bar-custom-command-3)
+      ("numeric-4-circle-outline" android-support-global-tool-bar-custom-command-4)
+      ("numeric-5-circle-outline" android-support-global-tool-bar-custom-command-5)
+      ("numeric-6-circle-outline" android-support-global-tool-bar-custom-command-6))
+    "List of (ICON COMMAND [KEY]) specs for the global tool bar.")
+
+  (defun android-support-global-tool-bar-setup ()
+    "Rebuild the global `tool-bar-map' from `android-support-global-tool-bar-items'."
+    (setf tool-bar-map (list 'keymap nil))
+    (cl-loop for (icon command key) in android-support-global-tool-bar-items
+             do (tool-bar-add-item icon command (or key command))))
+
+  (defun android-support-kill-local-tool-bar-map ()
+    "Drop a buffer-local `tool-bar-map' so the global bar shows here."
+    (kill-local-variable 'tool-bar-map))
+
+  ;;;; Chord translations + composed bindings
+  (defun android-support-setup-bindings ()
+    "Wire tool-bar buttons to real key sequences so they compose as chords."
+    (define-key key-translation-map (kbd "<tool-bar> <keyboard-quit>") (kbd "C-g"))
+    (define-key key-translation-map (kbd "<tool-bar> <execute-extended-command>") (kbd "C-c"))
+    (define-key key-translation-map (kbd "<tool-bar> <exchange-point-and-mark>") (kbd "C-x"))
+    (define-key key-translation-map (kbd "<tool-bar> <imenu>") (kbd "M-g"))
+    (define-key key-translation-map (kbd "<tool-bar> <isearch-forward>") (kbd "M-s"))
+    (global-set-key (kbd "C-x <up>") #'delete-other-windows)
+    (global-set-key (kbd "C-x <down>") #'split-window-below)
+    (global-set-key (kbd "C-c <tool-bar> <universal-argument>") #'execute-extended-command)
+    ;; NOTE: source also bound `C-x <tool-bar> <universal-argument>' to er/expand-region;
+    ;; dropped here (no expand-region package in this config).
+    (global-set-key (kbd "C-c <tool-bar> <undo>") #'pop-to-mark-command)
+    (global-set-key (kbd "C-x <tool-bar> <undo>") #'quit-window)
+    (global-set-key (kbd "C-c <tool-bar> <switch-to-buffer>") #'project-find-file)
+    (global-set-key (kbd "C-x <tool-bar> <switch-to-buffer>") #'find-file)
+    (global-set-key (kbd "C-c <tool-bar> <save-buffer>") #'bookmark-set)
+    (global-set-key (kbd "C-x <tool-bar> <save-buffer>") #'android-support-kill-buffer)
+    (global-set-key (kbd "M-s M-s") #'isearch-forward)
+    (global-set-key (kbd "M-g M-s") #'consult-imenu)
+    (global-set-key (kbd "M-s M-g") (if (executable-find "rg") #'consult-ripgrep #'consult-grep))
+    (global-set-key (kbd "C-x M-g") #'android-support-toggle-touch-screen-keyboard)
+    (global-set-key (kbd "C-x M-s") #'read-only-mode)
+    (define-key key-translation-map (kbd "<tool-bar> <indent-for-tab-command>") (kbd "TAB"))
+    (define-key key-translation-map (kbd "<tool-bar> <previous-line>") (kbd "<up>"))
+    (define-key key-translation-map (kbd "<tool-bar> <next-line>") (kbd "<down>"))
+    (define-key key-translation-map (kbd "<tool-bar> <backward-char>") (kbd "<left>"))
+    (define-key key-translation-map (kbd "<tool-bar> <forward-char>") (kbd "<right>")))
+
+  ;;;; Entry point
+  (defun android-support-enable ()
+    "Turn on the Android on-screen toolbar."
+    (setq tool-bar-position 'bottom)
+    (when (fboundp 'modifier-bar-mode) (modifier-bar-mode 1))
+    ;; Make the global toolbar win in every buffer: drop any buffer-local
+    ;; `tool-bar-map' that a major mode installs (e.g. the elfeed toolbars).
+    ;; `after-change-major-mode-hook' runs after each mode's own hook, so it
+    ;; neutralises mode-specific toolbars that would otherwise override ours.
+    (add-hook 'after-change-major-mode-hook #'android-support-kill-local-tool-bar-map)
+    (android-support-setup-bindings)
+    (android-support-global-tool-bar-setup))
+
+  (provide 'android-support)
+  ;;; android-support.el ends here
 #+end_src
 *** Generic
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -2464,72 +2626,6 @@ One alternative can be to have a separate script to copy the required passwords 
               
               (message "Calendar task copied to inbox.org and marked as DONE with logbook entry")))))))
 
-#+end_src
-** Org in Android
-#+begin_src emacs-lisp :tangle "post-init.el"
-  (when my-phone-p
-    ;; Clock in with task selection
-    (defun toolbar-org-clock-in-smart ()
-      "Smart clock in - use current heading or select task."
-      (interactive)
-      (cond
-       ;; If already clocked in, ask to switch
-       (org-clock-current-task
-        (when (y-or-n-p (format "Already clocked in to '%s'. Switch tasks? " 
-                                org-clock-current-task))
-          (org-clock-out)
-          (if (and (eq major-mode 'org-mode) (org-at-heading-p))
-              (org-clock-in)
-            (org-clock-in '(4))))) ; With prefix arg to select task
-       ;; If on org heading, clock in directly
-       ((and (eq major-mode 'org-mode) (org-at-heading-p))
-        (org-clock-in))
-       ;; Otherwise, let user select task
-       (t
-        (org-clock-in '(4)))))
-
-    ;; Clock out with summary
-    (defun toolbar-org-clock-out-with-summary ()
-      "Clock out and show summary."
-      (interactive)
-      (when org-clock-current-task
-        (let ((task org-clock-current-task)
-              (duration (org-duration-from-minutes
-                         (floor (org-time-convert-to-integer
-                                 (time-since org-clock-start-time)) 60))))
-          (org-clock-out)
-          (message "Clocked out of '%s' - Duration: %s" task duration))))
-
-    ;; Jump to currently clocked task
-    (defun toolbar-org-clock-goto ()
-      "Jump to currently clocked task."
-      (interactive)
-      (if org-clock-current-task
-          (org-clock-goto)
-        (message "No active clock")))
-
-    ;; (defun org-agenda-gtd ()
-    ;;   (interactive)
-    ;;   (org-agenda nil "g"))
-
-    (setq tool-bar-map (make-sparse-keymap))
-    (tool-bar-add-item "mail/inbox" 'org-open-inbox 'org-inbox-button
-                       :help "Open Inbox")
-    (tool-bar-add-item nil nil 'separator-1 :separator t)
-    (tool-bar-add-item "index" 'org-gtd-engage 'gtd-engage-button
-                       :help "GTD Engage")
-    (tool-bar-add-item "gnus/toggle-subscription" 'org-resolve-clocks 'resolve-clocks-button
-                       :help "Resolve Clocks")
-    (tool-bar-add-item nil nil 'separator-2 :separator t)
-    (tool-bar-add-item "mpc/play" 'toolbar-org-clock-in-smart 'smart-clock-in
-                       :help "Clock in to task (smart selection)")
-    (tool-bar-add-item "mpc/stop" 'toolbar-org-clock-out-with-summary 'clock-out-summary
-                       :help "Clock out with time summary")
-    (tool-bar-add-item "jump-to" 'toolbar-org-clock-goto 'goto-clock
-                       :help "Jump to currently clocked task")
-    (tool-bar-add-item "save" 'org-save-all-org-buffers 'save-all-org
-                       :help "Save all modified org buffers")
-    )
 #+end_src
 ** Hyperbole / Dashboard
 #+begin_src emacs-lisp :tangle "post-init.el"

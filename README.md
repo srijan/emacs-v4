@@ -108,7 +108,7 @@ plaintext when you're done regardless.
 `config.org` detects Android via `ANDROID_ROOT` (`my-phone-p`), set on both
 **Termux Emacs** and the **native Android port**
 ([android-ports-for-gnu-emacs](https://sourceforge.net/projects/android-ports-for-gnu-emacs/)),
-and enables a touch-friendly setup: top toolbar, always-on touch-screen keyboard
+and enables a touch-friendly setup: bottom toolbar, always-on touch-screen keyboard
 (`touch-screen-display-keyboard`), momentum scrolling, `touchpad-scroll-mode`,
 and an enlarged `tool-bar-button-margin` to compensate for Android's display
 density. A few things need care.
@@ -197,8 +197,8 @@ and `/product/fonts`.
 ### Touch tips
 
 - **Rapid volume-down presses = `C-g`** — a quit key when no keyboard is up.
-- The config uses `tool-bar-position` `top`; set it to `bottom` to keep buttons
-  nearer your thumbs, and enable `modifier-bar-mode` for a Ctrl/Meta button row.
+- The on-screen toolbar (see below) already sits at the `bottom` with
+  `modifier-bar-mode` on, so buttons and modifiers are under your thumbs.
 - If an on-screen keyboard fights Emacs while typing, toggle
   `text-conversion-style` (per-buffer) or `overriding-text-conversion-style`
   (global).
@@ -206,6 +206,17 @@ and `/product/fonts`.
 The config's unconditional `(server-start)` matters on Android: the port's
 "open file", `org-protocol`, and `mailto:` handoffs all go through an
 `emacsclient` wrapper that only works when the Emacs server is already running.
+
+### On-screen toolbar
+
+Under `my-phone-p` the config loads a bottom Material-icon toolbar
+(`srijan-lisp/android-support.el`, ported from bohonghuang's `android-support.el`)
+that doubles as a chorded keyboard: arrow keys, `C-g`, undo/save/search, `M-x`,
+and modifier/prefix buttons (`C-c`/`C-x`/`M-g`/`M-s`) that compose real key
+sequences, plus six numbered quick-command slots. Edit
+`android-support-global-tool-bar-custom-commands` to change the slots (defaults:
+capture, GTD engage, new note, journal, GTD projects, browse notes). Icons come
+from the `material-pbm-icons` package (TrueType-independent PBM bitmaps).
 
 ### If Emacs won't start (recovery)
 
