@@ -67,6 +67,17 @@ This file has the config that has to be loaded before the rest of the minimal-em
     (setenv "PATH" (format "%s:%s" "/data/data/com.termux/files/usr/bin"
                            (getenv "PATH")))
     (push "/data/data/com.termux/files/usr/bin" exec-path))
+
+  ;; macOS GUI Emacs does not inherit the shell's PATH, so Homebrew binaries
+  ;; (age, gls, ...) are invisible until `exec-path-from-shell' runs -- which
+  ;; is far too late: `sj/load-private' needs `age' much earlier in post-init.
+  ;; Prepend them here instead; exec-path-from-shell still runs later for the
+  ;; rest of the environment.
+  (when (eq system-type 'darwin)
+    (dolist (dir '("/usr/local/bin" "/opt/homebrew/bin"))
+      (when (file-directory-p dir)
+        (setenv "PATH" (format "%s:%s" dir (getenv "PATH")))
+        (push dir exec-path))))
 #+end_src
 
 * pre-init
