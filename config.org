@@ -2649,6 +2649,107 @@ One alternative can be to have a separate script to copy the required passwords 
     :disabled
     :demand t)
 
+  ;;;; Dashboard action commands (also usable from M-x and the Android tool bar)
+
+  (defun sj-dashboard--confirm (prompt)
+    "Ask PROMPT, preferring a tappable dialog on graphical frames.
+  When invoked from a mouse/touch event, `y-or-n-p' shows a clickable dialog,
+  so no keyboard is needed; falls back to a normal prompt in a terminal."
+    (let ((use-dialog-box (display-graphic-p)))
+      (y-or-n-p prompt)))
+
+  (defun sj-dashboard-visit-config ()
+    "Visit config.org."
+    (interactive)
+    (find-file (expand-file-name "config.org" minimal-emacs-user-directory)))
+
+  (defun sj-dashboard-visit-mindwtr ()
+    "Visit mindwtr.org in the sync folder."
+    (interactive)
+    (find-file (sj/sync "docs/org/mindwtr.org")))
+
+  (defun sj-dashboard-tangle ()
+    "Tangle config.org into its .el files."
+    (interactive)
+    (let ((config (expand-file-name "config.org" minimal-emacs-user-directory)))
+      (org-babel-tangle-file config)
+      (message "Tangled %s" config)))
+
+  (defun sj-dashboard-pull ()
+    "Pull changes in the Emacs config repo.  Asks first (network)."
+    (interactive)
+    (when (sj-dashboard--confirm "Pull Emacs repo changes? ")
+      (let ((default-directory minimal-emacs-user-directory))
+        (async-shell-command "git pull" "*emacs-repo-pull*"))))
+
+  (use-package dashboard
+    :ensure (:host github :repo "emacs-dashboard/dashboard")
+    :demand t
+    :custom
+    (dashboard-items '((agenda . 5) (recents . 5) (bookmarks . 5)))
+    (dashboard-center-content t)
+    (dashboard-set-footer nil)
+    :config
+    ;; Icons: skip file/heading icons on the phone (they need an icon font).
+    ;; Guarded so a missing icon package can never abort startup.
+    (condition-case err
+        (if my-phone-p
+            (setq dashboard-set-file-icons nil
+                  dashboard-set-heading-icons nil)
+          (cond
+           ((require 'nerd-icons nil t)
+            (setq dashboard-icon-type 'nerd-icons
+                  dashboard-display-icons-p t
+                  dashboard-set-file-icons t
+                  dashboard-set-heading-icons t))
+           ((require 'all-the-icons nil t)
+            (setq dashboard-icon-type 'all-the-icons
+                  dashboard-display-icons-p t
+                  dashboard-set-file-icons t
+                  dashboard-set-heading-icons t))
+           (t
+            (setq dashboard-set-file-icons nil
+                  dashboard-set-heading-icons nil))))
+      (error (message "dashboard icons: %s" (error-message-string err))))
+
+    ;; Tappable action buttons.  Each entry is (ICON TITLE HELP ACTION).
+    ;; `call-interactively' so commands with interactive specs behave normally.
+    (setq dashboard-navigator-buttons
+          `((("⟳" "Pull repo" "Pull Emacs repo changes"
+              (lambda (&rest _) (call-interactively #'sj-dashboard-pull)))
+             ("⚙" "Tangle" "Tangle config.org"
+              (lambda (&rest _) (call-interactively #'sj-dashboard-tangle)))
+             ("↻" "Reload" "Reload the configuration"
+              (lambda (&rest _) (call-interactively #'my-reload-emacs-configuration)))
+             ("✎" "config.org" "Visit config.org"
+              (lambda (&rest _) (call-interactively #'sj-dashboard-visit-config))))
+            (("✎" "mindwtr.org" "Visit mindwtr.org"
+              (lambda (&rest _) (call-interactively #'sj-dashboard-visit-mindwtr)))
+             ("＋" "Capture" "Capture to inbox"
+              (lambda (&rest _) (call-interactively #'org-capture-inbox)))
+             ("🗓" "Agenda" "GTD agenda"
+              (lambda (&rest _) (call-interactively #'mindwtr-engage)))
+             ("🔍" "Notes" "Browse notes"
+              (lambda (&rest _) (call-interactively #'consult-notes))))))
+
+    ;; Roomier tap targets on touch screens.
+    (add-hook 'dashboard-mode-hook
+              (lambda () (setq-local line-spacing 0.4)))
+
+    (dashboard-setup-startup-hook))
+
+  ;; `initial-buffer-choice' must return a buffer.  Set at top level (not in
+  ;; :config) and guarded, because Elpaca installs asynchronously: on a very
+  ;; first run dashboard may not be built yet, and an erroring
+  ;; `initial-buffer-choice' would break startup.
+  (setq initial-buffer-choice
+        (lambda ()
+          (if (fboundp 'dashboard-open)
+              (or (ignore-errors (dashboard-open))
+                  (get-buffer "*dashboard*")
+                  (get-buffer-create "*scratch*"))
+            (get-buffer-create "*scratch*"))))
+
 #+end_src
 ** Popup frames
 #+begin_src emacs-lisp :tangle "post-init.el"
