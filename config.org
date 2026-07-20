@@ -609,34 +609,24 @@ from the Phone block via =material-pbm-icons= (see below). Design:
      (if (setf touch-screen-display-keyboard (not touch-screen-display-keyboard))
          "enabled" "disabled")))
 
-  ;;;; Six configurable quick-command slots
-  (defcustom android-support-global-tool-bar-custom-commands
-    '(org-capture-inbox
-      mindwtr-engage
-      my/denote-inbox-note
-      denote-journal-new-or-existing-entry
-      mindwtr-projects
-      consult-notes)
-    "Commands bound to the six numbered buttons on the Android tool bar."
-    :type '(repeat function)
+  ;;;; Configurable quick-command slots
+  ;; Each slot carries its own Material Design Icon name, so adding, removing
+  ;; or reordering a slot is a one-line edit here.
+  (defcustom android-support-global-tool-bar-slots
+    '((dashboard-open                       . "view-dashboard-outline")
+      (org-capture-inbox                    . "inbox-arrow-down-outline")
+      (mindwtr-engage                       . "calendar-check-outline")
+      (denote-journal-new-or-existing-entry . "notebook-outline")
+      (consult-notes                        . "text-box-search-outline"))
+    "Quick-command slots on the Android tool bar, as (COMMAND . MDI-ICON-NAME)."
+    :type '(alist :key-type function :value-type string)
     :group 'android-support)
-
-  (defmacro android-support--define-custom-commands (n)
-    "Define N wrapper commands that call the Nth entry of the slots list."
-    `(progn . ,(cl-with-gensyms (command)
-                 (cl-loop for i from 1 to n
-                          collect `(defun ,(intern (format "%s-%d" 'android-support-global-tool-bar-custom-command i)) ()
-                                     (interactive)
-                                     (when-let* ((,command (nth ,(1- i) android-support-global-tool-bar-custom-commands)))
-                                       (if (commandp ,command)
-                                           (call-interactively ,command)
-                                         (message "android-support: `%s' is not available" ,command))))))))
-  (android-support--define-custom-commands 6)
 
   ;;;; The icon/command grid
   (defconst android-support-global-tool-bar-items
     ;; Grouped for a single-row layout: arrows, then edit/buffer actions,
-    ;; then quit + prefix/chord keys, then the six numbered slots.
+    ;; then quit + prefix/chord keys.  The quick slots are appended at setup
+    ;; time from `android-support-global-tool-bar-slots'.
     '(;; navigation (hjkl order)
       ("arrow-left" backward-char)
       ("arrow-down" next-line)
@@ -654,21 +644,18 @@ from the Phone block via =material-pbm-icons= (see below). Design:
       ("circle-multiple-outline" execute-extended-command)
       ("close-circle-multiple-outline" exchange-point-and-mark)
       ("menu" imenu)
-      ("magnify" isearch-forward)
-      ;; numbered quick-command slots 1-6
-      ("numeric-1-circle-outline" android-support-global-tool-bar-custom-command-1)
-      ("numeric-2-circle-outline" android-support-global-tool-bar-custom-command-2)
-      ("numeric-3-circle-outline" android-support-global-tool-bar-custom-command-3)
-      ("numeric-4-circle-outline" android-support-global-tool-bar-custom-command-4)
-      ("numeric-5-circle-outline" android-support-global-tool-bar-custom-command-5)
-      ("numeric-6-circle-outline" android-support-global-tool-bar-custom-command-6))
+      ("magnify" isearch-forward))
     "List of (ICON COMMAND [KEY]) specs for the global tool bar.")
 
   (defun android-support-global-tool-bar-setup ()
-    "Rebuild the global `tool-bar-map' from `android-support-global-tool-bar-items'."
+    "Rebuild the global `tool-bar-map' from the fixed items and the quick slots."
     (setf tool-bar-map (list 'keymap nil))
     (cl-loop for (icon command key) in android-support-global-tool-bar-items
-             do (tool-bar-add-item icon command (or key command))))
+             do (tool-bar-add-item icon command (or key command)))
+    ;; Quick slots: bind the real command directly, the same way the fixed
+    ;; items above do (e.g. `consult-buffer').
+    (cl-loop for (command . icon) in android-support-global-tool-bar-slots
+             do (tool-bar-add-item icon command command)))
 
   (defun android-support-kill-local-tool-bar-map ()
     "Drop a buffer-local `tool-bar-map' so the global bar shows here."
