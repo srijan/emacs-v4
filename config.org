@@ -2673,9 +2673,24 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure (:host github :repo "emacs-dashboard/dashboard")
     :demand t
     :custom
-    (dashboard-items '((agenda . 5) (recents . 5) (bookmarks . 5)))
+    ;; No agenda section: a full `org-map-entries' scan of the agenda files
+    ;; costs ~1s at every startup.  Today's agenda is one tap away instead
+    ;; (the Agenda button below, and tool-bar slot 3 on Android).
+    (dashboard-items '((recents . 5) (bookmarks . 5)))
     (dashboard-center-content t)
     (dashboard-set-footer nil)
+    ;; The default `dashboard-startupify-list' does NOT include the navigator,
+    ;; so `dashboard-navigator-buttons' would never be rendered.  Add it.
+    (dashboard-startupify-list '(dashboard-insert-banner
+                                 dashboard-insert-newline
+                                 dashboard-insert-banner-title
+                                 dashboard-insert-newline
+                                 dashboard-insert-navigator
+                                 dashboard-insert-newline
+                                 dashboard-insert-init-info
+                                 dashboard-insert-items
+                                 dashboard-insert-newline
+                                 dashboard-insert-footer))
     :config
     ;; Icons: skip file/heading icons on the phone (they need an icon font).
     ;; Guarded so a missing icon package can never abort startup.
