@@ -1782,35 +1782,12 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (with-eval-after-load 'notmuch
 
-      (defun my/gmail-search-url (message-id &optional email)
-        "Build a Gmail search URL for MESSAGE-ID.
-           Optional EMAIL specifies which Gmail account."
-        (let ((base (if email
-                        (format "https://mail.google.com/mail/?authuser=%s" email)
-                      "https://mail.google.com/mail/")))
-          (concat base "#search/rfc822msgid:" message-id)))
-
-
       (defun my/mindwtr-capture-template-with-link ()
-        "Like `mindwtr-capture-template' but appends both the notmuch link (%a)
-          and a Gmail search link for the same message."
-        (let ((gmail-link
-               (when (derived-mode-p 'notmuch-show-mode)
-                 (let* ((msgid (replace-regexp-in-string
-                                "^id:" ""
-                                (notmuch-show-get-message-id)))
-                        (email (or (notmuch-show-get-header :Delivered-To)
-                                   (notmuch-show-get-header :To)))
-                        (email (when email
-                                 (if (string-match "<\\([^>]+\\)>" email)
-                                     (match-string 1 email)
-                                   (string-trim email))))
-                        (url (my/gmail-search-url msgid email)))
-                   (format "[[%s][Gmail]]" url)))))
-          (concat (mindwtr-capture-template)
-                  "%a"
-                  (when gmail-link (concat " | " gmail-link))
-                  "\n%i\n"))))
+        "Like `mindwtr-capture-template' but with the stored link appended.
+For mail, `%a' expands to sender, date, subject, msgid and links -- see
+`my/org-store-link-mail-annotation'.  Nothing here is mail-specific, so
+this works as a general capture template."
+        (concat (mindwtr-capture-template) "%a\n%i\n")))
 
     (defun org-capture-inbox () (interactive) (org-capture nil "i"))
     (defun org-capture-mail ()
@@ -3934,11 +3911,128 @@ One alternative can be to have a separate script to copy the required passwords 
                          (my/notmuch-strip-and-tag "deleted" (notmuch-show-get-tags)))
                   (unless (notmuch-show-next-open-message)
                     (notmuch-show-next-thread t))))
+
+    ;; Portable links to a single message.  A `notmuch:' link only resolves
+    ;; inside this Emacs; these resolve anywhere a browser does, which is
+    ;; what makes captured mail reachable from the phone.
+    (defun my/gmail-search-url (message-id &optional email)
+      "Build a Gmail search URL for MESSAGE-ID.
+Optional EMAIL selects the account via `authuser'; an address is used
+rather than Gmail's /u/N/ index because N is assigned per browser by
+sign-in order, so the same index means different accounts on different
+devices.
+
+`ui=2' forces Gmail's desktop interface.  Gmail's mobile web UI is a
+separate application with no fragment routing, so a bare `#search/'
+link silently lands on the inbox on a phone.
+
+MESSAGE-ID is percent-encoded: message-ids routinely contain `+', `/'
+and `=', which would otherwise corrupt the fragment."
+      (concat "https://mail.google.com/mail/?"
+              (string-join (append (when email
+                                     (list (format "authuser=%s"
+                                                   (url-hexify-string email))))
+                                   '("ui=2"))
+                           "&")
+              "#search/rfc822msgid:" (url-hexify-string message-id)))
+
+    (defvar my/notmuch-maildir-accounts
+      `((,sj/employer . ,sj/mail-work)
+        ("srijan" . ,sj/mail-personal))
+      "Map a folder under ~/Maildir to the account that receives its mail.
+Keyed on the same folder names `notmuch-poll-script' syncs with gmi.")
+
+    (defun my/notmuch-message-account ()
+      "Account address for the message at point, or nil if unrecognised.
+Derived from the maildir the message landed in.  Headers cannot be used:
+notmuch's JSON exposes only Date, From, Subject and To, so
+`Delivered-To' is never available to `notmuch-show-get-header', and `To'
+may name a list or another recipient rather than us."
+      (let ((file (notmuch-show-get-filename)))
+        (when (and file (string-match "/Maildir/\\([^/]+\\)/" file))
+          (cdr (assoc (match-string 1 file) my/notmuch-maildir-accounts)))))
+
+    (defun my/notmuch-message-gmail-url ()
+      "Gmail search URL for the message at point, or nil outside notmuch."
+      (when (derived-mode-p 'notmuch-show-mode)
+        (my/gmail-search-url (notmuch-show-get-message-id t)
+                             (my/notmuch-message-account))))
+
+    (defun my/notmuch-capture-annotation ()
+      "Describe the mail message at point, or \"\" outside notmuch.
+Prose first, then the machine-readable msgid, then the links -- so the
+useful part is legible at a glance in Orgzly, Orgro and the mindwtr app,
+none of which can follow the `notmuch:' link.
+
+The `rfc822msgid:' line is the fallback for those readers: the entire
+line is a valid Gmail search, so selecting it and pasting into the
+search box finds the message on any device.  Hence no space after that
+colon, unlike the human-readable fields above it.
+
+Needs no `%' quoting: org-capture inserts a placeholder's replacement
+verbatim and does not rescan it, unlike text spliced into a template.
+There is in fact no correct quoting to apply -- `%%' is not an
+org-capture escape (it survives literally, and still fails to shield a
+following placeholder character), and `\\%' leaves a stray backslash
+wherever the `%' was harmless."
+      (if (not (derived-mode-p 'notmuch-show-mode))
+          ""
+        (let* ((msgid (notmuch-show-get-message-id t))
+               (url (my/notmuch-message-gmail-url))
+               (blank (lambda (s) (or (null s) (string-empty-p (string-trim s)))))
+               (from (notmuch-show-get-header :From))
+               (from (unless (funcall blank from) (string-trim from)))
+               (subject (notmuch-show-get-subject))
+               (subject (unless (funcall blank subject) (string-trim subject)))
+               (date (notmuch-show-get-date))
+               (date (unless (funcall blank date) (string-trim date))))
+          (string-join
+           (delq nil
+                 (list (when (or from date)
+                         (concat "Email"
+                                 (when from (concat " from " from))
+                                 (when date (concat " on " date))))
+                       (when subject (concat "Subject: " subject))
+                       (concat "rfc822msgid:" msgid)
+                       (concat (when url (format "[[%s][Gmail]] | " url))
+                               (format "[[notmuch:id:%s][notmuch]]" msgid))))
+           "\n"))))
     )
 
   (use-package ol-notmuch
     :if (not my-phone-p)
-    :after (notmuch org))
+    :after (notmuch org)
+    :config
+    (defun my/org-notmuch-store-gmail-link (result)
+      "Rewrite a stored notmuch link to its portable Gmail URL.
+Advice on `org-notmuch-store-link', which stores `notmuch:id:...'.
+That only resolves inside this Emacs, so every capture made from mail
+was dead on the phone.  The subject/from description ol-notmuch builds
+is kept as-is; only the target changes.  Falls through untouched when
+no Gmail URL can be derived, so notmuch-tree buffers and non-Gmail
+accounts keep the original link."
+      (let ((url (and result (my/notmuch-message-gmail-url))))
+        (if (not url)
+            result
+          (org-link-add-props :link url)
+          org-store-link-plist)))
+
+    (advice-add 'org-notmuch-store-link :filter-return
+                #'my/org-notmuch-store-gmail-link)
+
+    (defun my/org-store-link-mail-annotation (link)
+      "Expand LINK into a full mail description when storing from notmuch.
+LINK is the return value of `org-store-link', which `org-capture' uses
+verbatim as the `%a' annotation, so a bare `%a' in any template yields
+the whole block with no template changes.  Outside mail LINK is returned
+untouched, and `org-stored-links' is never modified either way, so
+`C-c C-l' still inserts a plain one-line link."
+      (if (and (stringp link) (derived-mode-p 'notmuch-show-mode))
+          (my/notmuch-capture-annotation)
+        link))
+
+    (advice-add 'org-store-link :filter-return
+                #'my/org-store-link-mail-annotation))
 
   (use-package consult-notmuch
     :if (not my-phone-p)
