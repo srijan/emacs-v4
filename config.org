@@ -1225,6 +1225,20 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     )
 
 #+end_src
+** Tabs
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (defun sj/tab-new-scratch ()
+    "Open a new tab bar tab showing the *scratch* buffer."
+    (interactive)
+    (let ((tab-bar-new-tab-choice #'get-scratch-buffer-create))
+      (tab-bar-new-tab)))
+
+  ;; Cmd-t, like a browser tab. Shadows `menu-set-font'.
+  (when my-mac-p
+    (global-set-key (kbd "s-t") #'sj/tab-new-scratch))
+
+#+end_src
 ** COMMENT Workspaces - Tab Bar and Tabspaces
 #+begin_src emacs-lisp :tangle "post-init.el"
   ;; Tab bar
