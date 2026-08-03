@@ -3484,6 +3484,11 @@ this works as a general capture template."
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package dockerfile-mode)
   (use-package yaml-mode)
+  (use-package kubernetes
+    :commands (kubernetes-overview)
+    :config
+    (setq kubernetes-poll-frequency 3600
+          kubernetes-redraw-frequency 3600))
 #+end_src
 ** COMMENT mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
