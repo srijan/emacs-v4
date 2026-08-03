@@ -3471,6 +3471,14 @@ this works as a general capture template."
   (use-package kotlin-ts-mode
     :mode "\\.kt\\'"
     :hook (kotlin-ts-mode . eglot-ensure))
+  (use-package eglot-java
+    :after (eglot)
+    :hook ((java-mode . eglot-java-mode)
+           (java-ts-mode . eglot-java-mode)))
+  (use-package jarchive
+    :config
+    (jarchive-mode))
+
 #+end_src
 ** Docker and Kubernetes
 #+begin_src emacs-lisp :tangle "post-init.el"
