@@ -3171,12 +3171,21 @@ this works as a general capture template."
     :commands (eglot
                eglot-ensure
                eglot-rename
-               eglot-format-buffer))
+               eglot-format-buffer)
+    :custom
+    (eglot-autoshutdown t)
+    (eglot-confirm-server-edits nil)
+    (eglot-report-progress t)
+    (eglot-extend-to-xref t)
+    (eglot-sync-connect 1)
+    (eglot-connect-timeout 60)
+    (eglot-autoreconnect t)
+    )
 
   (use-package eldoc
     :ensure nil
     :delight)
-#+end_src
+    #+end_src
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
 
