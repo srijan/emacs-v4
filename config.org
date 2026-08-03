@@ -3278,11 +3278,16 @@ this works as a general capture template."
     :demand t
     :config
     (setopt agent-shell-anthropic-authentication
-          (agent-shell-anthropic-make-authentication :login t))
+            (agent-shell-anthropic-make-authentication :login t))
     (setopt agent-shell-openai-authentication
-          (agent-shell-openai-make-authentication :login t))
+            (agent-shell-openai-make-authentication :login t))
     (setopt agent-shell-session-restore-verbosity 'full)
     )
+  (use-package agent-shell-dashboard
+    :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
+    :after agent-shell
+    :commands (agent-shell-dashboard))
+
 
   (use-package eai-tool-library
     :if (not my-phone-p)
