@@ -1507,12 +1507,10 @@ linked to the workspace without re-initialising its contents."
   ;; (add-hook 'term-mode-hook 'bb/setup-term-mode)
 
   (when (or my-linux-p my-mac-p)
-    (use-package multi-term)
     (use-package vterm
       :config
       ;;(setopt vterm-buffer-name-string "vterm/%s")
       )
-    (use-package multi-vterm)
     (use-package ghostel
       :demand t
       :bind (("C-x m" . ghostel)
