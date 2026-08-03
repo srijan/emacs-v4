@@ -4565,7 +4565,10 @@ With prefix arg, refresh the tag cache first."
     (elfeed-protocol-enabled-protocols '(fever))
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
-  (use-package elfeed-webkit :disabled)
+  (use-package elfeed-webkit
+    :after elfeed
+    :bind (:map elfeed-show-mode-map
+                ("%" . elfeed-webkit-toggle)))
 
 #+END_SRC
 *** Slack
