@@ -4276,7 +4276,23 @@ untouched, and `org-stored-links' is never modified either way, so
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package eww
     :ensure nil
-    :demand t)
+    :commands (eww)
+    :config
+    (when-let ((kagi-token (auth-source-pick-first-password :host "kagi.com" :user "token")))
+      (setq eww-search-prefix (concat "https://kagi.com/html/search?token=" kagi-token "&q=")))
+
+    (defun sj-eww-kagi-declutter (dom)
+      "Drop Kagi's header/nav/sidebar/footer chrome, keeping only the <main> results."
+      (or (car (dom-by-tag dom 'main)) dom))
+
+    (define-advice eww-display-document (:filter-args (args) sj-eww-kagi-declutter)
+      (pcase-let ((`(,document . ,rest) args))
+        (if (and (eq (car document) 'base)
+                 (string-match-p "\\`https?://kagi\\.com/" (alist-get 'href (cadr document))))
+            (cons (eww-document-base (alist-get 'href (cadr document))
+                                      (sj-eww-kagi-declutter (caddr document)))
+                  rest)
+          args))))
   (defcustom sj-browse-url-handlers `()
     "Alist of (KEY REGEX-LIST . FUNCTION) pairs for URL handling.
     KEY is a symbol identifying the handler.
