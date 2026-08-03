@@ -3430,12 +3430,11 @@ this works as a general capture template."
 
     (use-package eglot
       :ensure nil
-      :hook (erlang-mode . eglot-ensure)
       :config
       ;;(add-to-list 'eglot-server-programs
       ;;             (erlang-mode . ("elp" "--log-file" "elp.log" "server")))
-      ;;(add-to-list 'eglot-server-programs
-      ;;             '((kotlin-ts-mode kotlin-mode) . ("kotlin-lsp" "--stdio")))
+      (add-to-list 'eglot-server-programs
+                   '((kotlin-ts-mode kotlin-mode) . ("kotlin-lsp" "--stdio")))
       )
 
     (add-hook 'eglot-managed-mode-hook
@@ -3446,6 +3445,25 @@ this works as a general capture template."
                             (remove #'flymake-eldoc-function eldoc-documentation-functions)))
                 ;; Show all eldoc feedback.
                 (setq eldoc-documentation-strategy #'eldoc-documentation-compose)))
+
+    (defun heks/eglot-uri-to-path-kotlin (orig-fn uri &rest args)
+      (if (and (stringp uri) (string-prefix-p "jar:///" uri))
+          (apply orig-fn (replace-regexp-in-string "^jar:///" "jar:file:///" uri) args)
+        (apply orig-fn uri args)))
+
+    (defun heks/eglot-path-to-uri-kotlin (orig-fn path &rest args)
+      (if (and (stringp path) (string-prefix-p "jar:file:///" path))
+          (replace-regexp-in-string "^jar:file:///" "jar:///" path)
+        (apply orig-fn path args)))
+
+    (if (fboundp 'eglot-uri-to-path)
+        (progn
+          (advice-add 'eglot-uri-to-path :around #'heks/eglot-uri-to-path-kotlin)
+          (advice-add 'eglot-path-to-uri :around #'heks/eglot-path-to-uri-kotlin))
+      (progn
+        (advice-add 'eglot--uri-to-path :around #'heks/eglot-uri-to-path-kotlin)
+        (advice-add 'eglot--path-to-uri :around #'heks/eglot-path-to-uri-kotlin)))
+
     )
 #+END_SRC
 ** Kotlin
