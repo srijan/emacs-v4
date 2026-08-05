@@ -964,13 +964,16 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
           xref-show-definitions-function #'consult-xref)
 
     (defun my/consult-clock-in ()
-      "Use consult-org-agenda to select and clock into a task without changing current buffer."
+      "Use consult-org-agenda to select and clock into a task without changing current buffer.
+  `consult-org-agenda' jumps to the chosen heading as a preview side effect and
+  may select another window to do it, so restore the whole window configuration
+  rather than just re-showing the original buffer in whatever window we land in."
       (interactive)
-      (let ((original-buffer (current-buffer)))
-        (when-let (marker (consult-org-agenda))
+      (let ((wconf (current-window-configuration)))
+        (when-let* ((marker (consult-org-agenda)))
           (org-with-point-at marker
             (org-clock-in)))
-        (switch-to-buffer original-buffer)))
+        (set-window-configuration wconf)))
 
     :config
     (consult-customize
