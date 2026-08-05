@@ -1683,68 +1683,119 @@ One alternative can be to have a separate script to copy the required passwords 
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
 
-    ;; Session.app (macOS focus timer) integration + cross-device state sync.
-    ;; On org-clock in/out we (a) drive the macOS Session timer via its session://
+    ;; Focus-timer integration + cross-device state sync.
+    ;; On org-clock in/out/cancel we (a) drive a macOS focus-timer app via its
     ;; URL scheme, and (b) write the current session to a Syncthing-synced JSON
-    ;; file so an Android home-screen widget can show the active task.  The
-    ;; session:// calls are a no-op off macOS; the state file is written everywhere.
-    (defun my/session-dispatch (url)
-      "Open a session:// URL via macOS `open' (no-op off macOS).
-  Uses `call-process' (not a shell string) so titles with quotes/special
-  chars are safe, and a destination of 0 so the clock hook never blocks."
-      (when (eq system-type 'darwin)
-        (call-process "open" nil 0 nil "-g" url)))
+    ;; file so an Android home-screen widget can show the active task.  The URL
+    ;; calls are a no-op off macOS; the state file is written everywhere.
+    (defvar my/clock-timer 'focus
+      "Which macOS focus-timer app `org-clock' drives.
+    `focus'    Focus (heyfocus.com)  -- focus://focus?profile=...
+    `session'  Session.app           -- session:///start?intent=...
+    nil        drive nothing; only `my/state-file' is written.
+    Switch for the current session with `my/clock-timer-set'.")
+
+    (defvar my/clock-timer--active nil
+      "Cons of (TASK . CATEGORY) for the clock-in last announced, or nil.
+    Clock-out/cancel reuse it rather than re-reading the heading, so they work
+    regardless of where point is -- and so Focus is un-focused with the same
+    profile it was focused with.")
+
+    (defun my/clock-timer-set (backend)
+      "Set `my/clock-timer' to BACKEND for the rest of this Emacs session."
+      (interactive
+       (list (intern (completing-read "Focus timer: " '("focus" "session" "none")
+                                      nil t))))
+      (setq my/clock-timer (unless (eq backend 'none) backend))
+      (message "org-clock focus timer: %s" (or my/clock-timer "none")))
+
+    (defun my/clock-timer-profile (task category)
+      "Focus profile name for TASK in CATEGORY.
+    Breaks and reading share one profile; everything else uses the MW_AREA,
+    since v5 keeps every task in one file and the file name is no longer a
+    useful discriminator."
+      (if (member task '("Break" "Reading")) "break" (downcase category)))
+
+    (defun my/clock-timer-dispatch (event task category)
+      "Drive `my/clock-timer' for EVENT: one of `in', `out' or `cancel'.
+    Uses `call-process' (not a shell string) so titles with quotes/special
+    chars are safe, and a destination of 0 so the clock hook never blocks.
+    An unhandled backend/event pair yields no URL and is silently skipped."
+      (let ((url
+             (pcase (cons my/clock-timer event)
+               (`(focus . in)
+                (format "focus://focus?profile=%s"
+                        (url-hexify-string (my/clock-timer-profile task category))))
+               (`(focus . ,_)
+                (format "focus://unfocus?profile=%s"
+                        (url-hexify-string (my/clock-timer-profile task category))))
+               (`(session . in)
+                (format "session:///start?intent=%s&categoryName=%s"
+                        (url-hexify-string task) (url-hexify-string category)))
+               (`(session . out) "session:///finish")
+               (`(session . cancel) "session:///abandon"))))
+        (when (and url (eq system-type 'darwin))
+          (call-process "open" nil 0 nil "-g" url))))
 
     (defvar my/state-file (sj/sync "docs/org/state.json")
       "Synced JSON file publishing Emacs context to an Android KWGT widget.
-  Written on org-clock in/out/cancel; read-only on the phone (via Syncthing),
-  where Tasker watches this file (File Modified event; a Syncthing write fires
-  both Closed-Write and Moved-To, so a single trigger type suffices) and fans
-  the keys out to KWGT globals.  Extensible: add keys to the published plist as
-  more contextual widgets are built.  Current shape:
-  {active, intent, category, started, started_kwgt}.")
+    Written on org-clock in/out/cancel; read-only on the phone (via Syncthing),
+    where Tasker watches this file (File Modified event; a Syncthing write fires
+    both Closed-Write and Moved-To, so a single trigger type suffices) and fans
+    the keys out to KWGT globals.  Extensible: add keys to the published plist as
+    more contextual widgets are built.  Current shape:
+    {active, intent, category, started, started_kwgt}.")
 
     (defun my/state-write (plist)
       "Serialize PLIST to `my/state-file' as one JSON object.
-  Errors are swallowed so a sync/IO hiccup never breaks clocking."
+    Errors are swallowed so a sync/IO hiccup never breaks clocking."
       (ignore-errors
         (let ((file (expand-file-name my/state-file)))
           (make-directory (file-name-directory file) t)
           (with-temp-file file
             (insert (json-serialize plist) "\n")))))
 
-    (defun my/session-clock-in ()
+    (defun my/clock-area ()
+      "Mindwtr area for the entry at point, or nil when it has none.
+    The area is rendered as a `CATEGORY' property on the project heading, so
+    a task inherits it from an ancestor.  `org-entry-get' can't be used here:
+    it special-cases CATEGORY and falls back to the org-data category, i.e.
+    the file name (\"mindwtr\") for anything outside a project."
+      (org-element-lineage-map (org-element-at-point)
+          (lambda (el) (car (org--property-local-values "CATEGORY" nil el)))
+        '(headline inlinetask) 'with-self 'first-match))
+
+    (defun my/clock-in ()
       (let ((task-name (org-get-heading t t t t))
-            (category (or (org-entry-get nil "MW_AREA" t) "general")))
+            (category (or (my/clock-area) "general")))
         (my/state-write
          (list :active t :intent task-name :category category
                :started (format-time-string "%FT%T%z")
                ;; Kustom-native date text (1955y11M12d22h04m00s) so KWGT's
                ;; $tf()$/$df()$ can read it directly; ISO above is for humans.
                :started_kwgt (format-time-string "%Yy%mM%dd%Hh%Mm%Ss")))
-        ;; (my/session-dispatch
-        ;;  (format "session:///start?intent=%s&categoryName=%s"
-        ;;          (url-encode-url task-name)
-        ;;          (url-encode-url category)))
-        ))
+        (setq my/clock-timer--active (cons task-name category))
+        (my/clock-timer-dispatch 'in task-name category)))
 
-    (defun my/session-clock-out ()
+    (defun my/clock--end (event)
+      "Publish an idle state file and tell the focus timer about EVENT."
       (my/state-write '(:active :false))
-      ;; (my/session-dispatch "session:///finish")
-      )
+      (when my/clock-timer--active
+        (my/clock-timer-dispatch event
+                                 (car my/clock-timer--active)
+                                 (cdr my/clock-timer--active))
+        (setq my/clock-timer--active nil)))
 
-    (defun my/session-clock-cancel ()
-      (my/state-write '(:active :false))
-      ;; (my/session-dispatch "session:///abandon")
-      )
+    (defun my/clock-out () (my/clock--end 'out))
+    (defun my/clock-cancel () (my/clock--end 'cancel))
 
-    (add-hook 'org-clock-in-hook #'my/session-clock-in)
-    (add-hook 'org-clock-out-hook #'my/session-clock-out)
-    (add-hook 'org-clock-cancel-hook #'my/session-clock-cancel)
+    (add-hook 'org-clock-in-hook #'my/clock-in)
+    (add-hook 'org-clock-out-hook #'my/clock-out)
+    (add-hook 'org-clock-cancel-hook #'my/clock-cancel)
 
     (defun my-org-demote-title-to-body ()
       "Move the current heading's title into the body, below the metadata.
-              Point returns to the heading for editing."
+                Point returns to the heading for editing."
       (interactive)
       (org-back-to-heading t)
       (let* ((element (org-element-at-point))
@@ -1796,9 +1847,9 @@ One alternative can be to have a separate script to copy the required passwords 
 
       (defun my/mindwtr-capture-template-with-link ()
         "Like `mindwtr-capture-template' but with the stored link appended.
-For mail, `%a' expands to sender, date, subject, msgid and links -- see
-`my/org-store-link-mail-annotation'.  Nothing here is mail-specific, so
-this works as a general capture template."
+  For mail, `%a' expands to sender, date, subject, msgid and links -- see
+  `my/org-store-link-mail-annotation'.  Nothing here is mail-specific, so
+  this works as a general capture template."
         (concat (mindwtr-capture-template) "%a\n%i\n")))
 
     (defun org-capture-inbox () (interactive) (org-capture nil "i"))
@@ -2254,32 +2305,8 @@ this works as a general capture template."
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
 
-    (when my-mac-p
-      (defun my/focus-clock-in ()
-        (let* ((task-name (org-get-heading t t t t))
-               (file-name (file-name-sans-extension (buffer-name)))
-               (profile (cond
-                         ((string= task-name "Break") "break")
-                         ((string= task-name "Reading") "break")
-                         (t (downcase file-name))))
-               (url (format "focus://focus?profile=%s" profile))
-               (cmd (format "open -g '%s'" url)))
-          (shell-command cmd)))
-
-      (defun my/focus-clock-out ()
-        (let* ((task-name (org-get-heading t t t t))
-               (file-name (file-name-sans-extension (buffer-name)))
-               (profile (cond
-                         ((string= task-name "Break") "break")
-                         ((string= task-name "Reading") "break")
-                         (t (downcase file-name))))
-               (url (format "focus://unfocus?profile=%s" profile))
-               (cmd (format "open -g '%s'" url)))
-          (shell-command cmd)))
-
-      ;;(add-hook 'org-clock-in-hook #'my/focus-clock-in)
-      ;;(add-hook 'org-clock-out-hook #'my/focus-clock-out)
-      )
+    ;; Focus.app integration lived here; it now hangs off `my/clock-timer' in
+    ;; the v5 section above, which drives Focus or Session from one dispatcher.
 
     )
 
