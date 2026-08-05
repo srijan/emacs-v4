@@ -4638,6 +4638,7 @@ With prefix arg, refresh the tag cache first."
     (setq slack-enable-global-mode-string t)
     (setq slack-buffer-function 'switch-to-buffer)
     (setq slack-thread-also-send-to-room nil)
+    (setq slack-request-curl-options (list "--user-agent" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"))
     ;;(setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
     (slack-register-team
      :name sj/employer
