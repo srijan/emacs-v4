@@ -314,7 +314,10 @@ TODO: Need to evaluate how much speedup this gives
       :custom
       (quake-frame-height 0.6)
       (quake-frame-position 'top)
-      (quake-frame-offset-y 20)
+      (quake-frame-offset-y 0)
+      (quake-frame-frame-parameters
+       '((z-group . above)
+         (alpha-background . 85)))
       )
     )
 #+end_src
