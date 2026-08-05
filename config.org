@@ -3513,9 +3513,18 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package yaml-mode)
   (use-package kubernetes
     :commands (kubernetes-overview)
-    :config
-    (setq kubernetes-poll-frequency 3600
-          kubernetes-redraw-frequency 3600))
+    ;; :custom runs at init -- unlike :config, which use-package keys on
+    ;; `eval-after-load 'kubernetes' and which therefore never fires, because
+    ;; the `kubernetes-overview' autoload loads kubernetes-overview.el
+    ;; (provides `kubernetes-overview'), never kubernetes.el.
+    :custom
+    (kubernetes-poll-frequency 3600)
+    (kubernetes-redraw-frequency 3600)
+    :init
+    ;; `kubernetes-dispatch' ("?") and the "T" key reference the
+    ;; `kubernetes-events' transient, but only kubernetes.el requires
+    ;; kubernetes-events and the prefix carries no autoload cookie.
+    (with-eval-after-load 'kubernetes-overview (require 'kubernetes-events)))
 #+end_src
 ** COMMENT mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
