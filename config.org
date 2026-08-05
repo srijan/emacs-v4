@@ -4728,7 +4728,11 @@ With prefix arg, refresh the tag cache first."
     ;; (lambda (url &optional _new-window)
     ;;   (github-explorer (github-explorer-repo-from-url url))))
     )
-    
+  (use-package remoto
+    :ensure (:host github :repo "agzam/remoto.el")
+    :demand t
+    )
+
 #+end_src
 *** Micropub / Indieweb
 #+begin_src emacs-lisp :tangle "post-init.el"
