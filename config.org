@@ -4782,45 +4782,420 @@ With prefix arg, refresh the tag cache first."
     (clatter-setup)
     (require 'gnutls)
 
-    ;; Clatter has no `soju.im/bouncer-networks' support, so each upstream
-    ;; network needs its own connection, with the network named in the SASL
-    ;; username as <user>/<network>.  Clatter hardcodes the SASL authcid to
-    ;; the nick, which cannot carry the suffix (a `/' is not a legal nick,
-    ;; and the nick is also sent as a literal NICK to the upstream).  Route
-    ;; the authcid through `:username' instead, which clatter otherwise only
-    ;; uses for the USER command.  Upstream lacks a `:sasl-username'.
-    (define-advice clatter-cap--sasl-plain-authenticate
-        (:override (conn) sj/sasl-username)
-      "Use `:username' as the SASL authcid when set, else fall back to nick."
-      (let* ((config (process-get (clatter-connection-process conn)
-                                  :clatter-config))
-             (authcid (or (plist-get config :username)
-                          (clatter-connection-nick conn)))
-             (password (clatter-get-password (clatter-connection-network-id conn)))
-             (auth-string (format "%c%s%c%s" 0 authcid 0 password))
-             (encoded (base64-encode-string auth-string t)))
-        (setf (clatter-connection-sasl-state conn) :authenticating)
-        (clatter-send conn (format "AUTHENTICATE %s" encoded))))
+    ;; Root-cause robustness: clatter's process filter dispatches each line
+    ;; with no per-line error isolation, so a single signalling handler
+    ;; aborts the `while' loop and drops every remaining buffered line.  soju
+    ;; replays a network's channel JOINs as one burst, so one bad line early
+    ;; in the burst (e.g. an empty-body message) truncates it and most
+    ;; channel buffers never get created.  Isolate each line: log and carry
+    ;; on so the rest of the burst still lands.
+    (define-advice clatter--handle-line
+        (:around (orig conn line) sj/isolate-line-errors)
+      (condition-case err
+          (funcall orig conn line)
+        (error
+         (message "[clatter] handler error on %S: %S" line err))))
+
+    ;; soju's CHATHISTORY compares timestamp bounds at whole-second granularity
+    ;; (and rejects msgid bounds), so paging re-includes the boundary second and
+    ;; the renderer would draw the boundary message twice.  Dedup the RENDER by
+    ;; msgid via an in-memory per-channel set: the redrawn boundary is dropped
+    ;; from display, while the logs stay complete (logging dedups separately via
+    ;; the high-water mark).  Also contains render errors so a failure can't
+    ;; abort the other batch hooks (logging, paging).
+    (defvar my/clatter--last-rendered-msgid (make-hash-table :test 'equal)
+      "Map (network . downcased-target) -> msgid of the newest rendered message.
+The boundary for dropping already-seen messages: CHATHISTORY returns messages
+in chronological order, and soju re-returns the boundary second on the next
+page, so everything up to and including this msgid was already drawn.")
+
+    (defun my/clatter--after-msgid (messages boundary)
+      "Return the tail of MESSAGES (chronological) after the one whose msgid is
+BOUNDARY -- everything up to and including BOUNDARY was already rendered.  If
+BOUNDARY is nil or not present (no overlap), return MESSAGES unchanged."
+      (if (null boundary)
+          messages
+        (let ((tail messages) (found nil))
+          (while (and tail (not found))
+            (when (equal (my/clatter--msg-msgid (car tail)) boundary)
+              (setq found t))
+            (setq tail (cdr tail)))
+          (if found tail messages))))
+
+    (define-advice clatter-ui--on-batch-complete
+        (:around (orig conn batch-type target messages) sj/render-dedup)
+      (condition-case _
+          (if (and (member batch-type '("chathistory" "draft/chathistory"))
+                   (stringp target))
+              (let* ((key (cons (clatter-connection-network-id conn)
+                                (downcase target)))
+                     (fresh (my/clatter--after-msgid
+                             messages
+                             (gethash key my/clatter--last-rendered-msgid))))
+                (when fresh
+                  (let ((last-id (my/clatter--msg-msgid (car (last fresh)))))
+                    (when last-id
+                      (puthash key last-id my/clatter--last-rendered-msgid))))
+                (funcall orig conn batch-type target fresh))
+            (funcall orig conn batch-type target messages))
+        (error nil)))
+
+    ;; Root cause of the `(args-out-of-range N N)' errors during history
+    ;; playback: `clatter--find-message-by-msgid' reads the reply target's
+    ;; sender/text/type with `get-text-property FOUND ...' but WITHOUT
+    ;; re-entering the channel buffer FOUND came from.  During playback the
+    ;; current buffer is not the channel buffer, so a reply message whose
+    ;; target position exceeds the current buffer's `point-max' throws (and
+    ;; even when it doesn't, the preview is read from the wrong buffer).  Read
+    ;; in the buffer the position belongs to.
+    (define-advice clatter--find-message-by-msgid
+        (:override (buffer msgid) sj/read-reply-in-right-buffer)
+      (when-let* ((found (clatter--find-message-position-by-msgid buffer msgid)))
+        (with-current-buffer buffer
+          (cons (cons (get-text-property found 'clatter-sender)
+                      (get-text-property found 'clatter-text))
+                (get-text-property found 'clatter-msg-type)))))
+
+    ;; Upstream crashes on a NOTICE/PRIVMSG with an empty body: `raw-text' is
+    ;; nil, so `clatter-insert-generic' hits (get-text-property 0 ... nil) and
+    ;; the process filter aborts (seen on multi-network connect, where empty
+    ;; server NOTICEs interrupt CHATHISTORY playback).  Coerce a nil
+    ;; sender/text to safe defaults.  No-ops once upstream guards this.
+    (define-advice clatter-insert-generic
+        (:filter-args (args) sj/nil-text-guard)
+      (let ((args (copy-sequence args)))
+        (unless (nth 2 args) (setf (nth 2 args) "*"))
+        (unless (nth 3 args) (setf (nth 3 args) ""))
+        args))
+
+    ;; Upstream sends `CHATHISTORY TARGETS * *', but the IRCv3 spec requires
+    ;; two real timestamps; soju rejects `*' with
+    ;; FAIL CHATHISTORY/INVALID_PARAMS ("Invalid first bound"), so offline-DM
+    ;; discovery fails on every connect.  Send an epoch..now window instead.
+    (define-advice clatter-chathistory-fetch-targets
+        (:override (conn &optional limit) sj/valid-targets-bounds)
+      (when (clatter-chathistory--available-p conn)
+        (let ((n (or limit clatter-chathistory-limit)))
+          (clatter-send
+           conn
+           (format "CHATHISTORY TARGETS timestamp=1970-01-01T00:00:00.000Z timestamp=%s %d"
+                   (format-time-string "%Y-%m-%dT%H:%M:%S.000Z" nil t)
+                   n)))))
+
+    ;; On (re)connect fetch the whole gap since we were last here, not just the
+    ;; last `clatter-chathistory-limit' messages.  Upstream only gap-fills when
+    ;; an in-memory cursor exists (lost on restart) and otherwise fetches
+    ;; LATEST N.  We fetch AFTER the more recent of the last-seen cursor and a
+    ;; floor `my/clatter-chathistory-max-age-days' days back -- but a single
+    ;; CHATHISTORY AFTER is capped (soju returns ~100 per request, oldest
+    ;; first), so a busy channel would only replay the oldest 100 in the
+    ;; window.  Page forward from the newest message of each batch until a
+    ;; channel is caught up (empty batch / no forward progress) or a safety cap.
+    (defvar my/clatter-chathistory-max-age-days 3
+      "Cap, in days, on how far back the on-join gap fetch reaches.")
+    (defvar my/clatter-chathistory-max-pages 100
+      "Safety cap on CHATHISTORY pages fetched per channel during gap catch-up.
+At ~100 messages per page this bounds a single channel's replay to ~10k,
+enough for a full day on all but pathologically busy channels.  Rendering
+is synchronous, so a very large fill can be briefly laggy while it lands.")
+    (defvar my/clatter--chathistory-catchup (make-hash-table :test 'equal)
+      "In-progress gap catch-up: (network . target) -> (PAGE . LAST-SINCE-TIME).")
+
+    (defun my/clatter--gap-key (conn target)
+      (cons (clatter-connection-network-id conn) (downcase target)))
+
+    (defun my/clatter--newest-msg (messages)
+      "Return the MESSAGE plist with the newest :time in MESSAGES, or nil."
+      (let (best best-time)
+        (dolist (m messages best)
+          (let ((tm (plist-get m :time)))
+            (when (and tm (or (null best-time) (time-less-p best-time tm)))
+              (setq best m best-time tm))))))
+
+    (defun my/clatter--msg-msgid (msg)
+      "Return MSG's msgid (from the `clatter-msgid' text property on :text), or nil."
+      (let ((text (plist-get msg :text)))
+        (and (stringp text) (> (length text) 0)
+             (get-text-property 0 'clatter-msgid text))))
+
+    (defun my/clatter--chathistory-req-limit (conn)
+      "CHATHISTORY page size to request on CONN: `clatter-chathistory-limit'
+clamped to the server's advertised CHATHISTORY max (ISUPPORT).  Using the
+real cap makes a short page reliably mean \"caught up\" rather than \"server
+capped a full page below what we asked\" -- so pagination neither under-fills
+nor fetches an extra page that just re-renders the boundary message."
+      (let* ((isupport (clatter-connection-isupport conn))
+             (max (and isupport (gethash "CHATHISTORY" isupport)))
+             (max (and (stringp max) (string-to-number max))))
+        (if (and max (> max 0))
+            (min clatter-chathistory-limit max)
+          clatter-chathistory-limit)))
+
+    (defun my/clatter--gap-fetch (conn target selector page last-time)
+      "Request the PAGE'th gap page for TARGET via `CHATHISTORY AFTER SELECTOR'.
+SELECTOR is a preformatted CHATHISTORY bound (\"msgid=...\" from the previous
+page's newest message, or \"timestamp=...\" for the first page).  LAST-TIME is
+the newest message time seen so far, stashed for the progress guard.  Msgid
+bounds are excluded precisely by soju, so paging never re-renders the boundary
+message (unlike a timestamp bound, which soju compares at whole-second
+granularity)."
+      (when (clatter-chathistory--available-p conn)
+        (puthash (my/clatter--gap-key conn target) (cons page last-time)
+                 my/clatter--chathistory-catchup)
+        (clatter-send
+         conn
+         (format "CHATHISTORY AFTER %s %s %d"
+                 target selector (my/clatter--chathistory-req-limit conn)))))
+
+    (defun my/clatter--gap-timestamp-selector (time)
+      "Return a CHATHISTORY `timestamp=' selector for TIME (millisecond precision)."
+      (format "timestamp=%s"
+              (format-time-string "%Y-%m-%dT%H:%M:%S.%3NZ" time t)))
+
+    (defun my/clatter--gap-continue (conn batch-type target messages)
+      "Page CHATHISTORY forward until a catching-up channel is current.
+Continues only for channels started by the on-join gap fetch, and only after
+a FULL page (count == the server's real per-request limit); a short page means
+we have everything, so we stop.  Pages by the newest message's MSGID, which
+soju excludes precisely -- so no boundary message is re-rendered and no
+same-second message is dropped.  Falls back to a millisecond timestamp bound
+if the newest message carries no msgid.  The `newest' time progress check is a
+secondary guard against a non-advancing cursor.  Wrapped in `condition-case'
+so a paging error can't abort the other batch hooks (they run before the
+renderer)."
+      (condition-case err
+          (when (and (member batch-type '("chathistory" "draft/chathistory"))
+                     (stringp target))
+            (when-let* ((key (my/clatter--gap-key conn target))
+                        (state (gethash key my/clatter--chathistory-catchup)))
+              (let* ((page (car state))
+                     (last-time (cdr state))
+                     (newest-msg (my/clatter--newest-msg messages))
+                     (newest (and newest-msg (plist-get newest-msg :time)))
+                     (count (length messages)))
+                (if (and (>= count (my/clatter--chathistory-req-limit conn))
+                         newest (time-less-p last-time newest)
+                         (< page my/clatter-chathistory-max-pages))
+                    ;; Page by TIMESTAMP -- soju rejects msgid bounds.  It
+                    ;; truncates to whole seconds and re-includes the boundary
+                    ;; second; the render dedup drops the redrawn boundary.
+                    (my/clatter--gap-fetch
+                     conn target (my/clatter--gap-timestamp-selector newest)
+                     (1+ page) newest)
+                  (remhash key my/clatter--chathistory-catchup)
+                  (when (>= page my/clatter-chathistory-max-pages)
+                    (message "[clatter] %s: history catch-up hit %d-page cap"
+                             target my/clatter-chathistory-max-pages))))))
+        (error (message "[clatter] gap-continue error on %s: %S" target err))))
+    (add-hook 'clatter-batch-complete-hook #'my/clatter--gap-continue)
+
+    (define-advice clatter-chathistory--on-join
+        (:override (conn sender channel _account _realname) sj/gap-since-last-connect)
+      (when (and clatter-chathistory-enabled
+                 clatter-chathistory-on-join
+                 (string-equal (clatter-prefix-nick sender)
+                               (clatter-connection-nick conn))
+                 (clatter-chathistory--available-p conn))
+        (let* ((network (clatter-connection-network-id conn))
+               (buf (clatter-get-buffer network channel))
+               (mem-last (and buf (buffer-local-value
+                                   'clatter-chathistory--last-timestamp buf)))
+               (mem-secs (and mem-last (float-time mem-last)))
+               ;; Persisted per-channel cursor (SECS . MSGID) -- survives a full
+               ;; stop/restart, unlike the in-memory cursor.
+               (hw (gethash (cons network (downcase channel)) my/clatter--log-hw))
+               (hw-secs (car hw))
+               (hw-msgid (cdr hw))
+               ;; Floor is `my/clatter-chathistory-max-age-days' back -- NOT a
+               ;; hardcoded 24h; change that var to widen/narrow the window.
+               (floor-secs (float-time
+                            (time-subtract (current-time)
+                                           (days-to-time my/clatter-chathistory-max-age-days))))
+               ;; Resume from the newest cursor we have (in-memory OR persisted),
+               ;; but never reach past the floor: a short absence fetches just
+               ;; the gap; a long one caps at the floor.
+               (since-secs (max (or mem-secs 0) (or hw-secs 0) floor-secs))
+               (since (seconds-to-time since-secs)))
+          ;; Seed the render-dedup boundary with the persisted msgid so the
+          ;; restart re-fetch (a timestamp bound re-includes the boundary
+          ;; second, since soju compares at whole-second granularity) drops
+          ;; everything up to and including the last-seen message.  `hw-secs'
+          ;; still floors the fetch window above.
+          (when hw-msgid
+            (puthash (cons network (downcase channel)) hw-msgid
+                     my/clatter--last-rendered-msgid))
+          (my/clatter--gap-fetch conn channel
+                                 (my/clatter--gap-timestamp-selector since)
+                                 0 since))))
+
+    ;; Batch playback (`clatter-ui--on-batch-complete') inserts history by
+    ;; calling `clatter-insert-privmsg' directly, bypassing `clatter-privmsg-hook'
+    ;; where the log writer lives -- so replayed CHATHISTORY never reaches the
+    ;; on-disk logs.  Log it here, gated by a persistent per-target high-water
+    ;; mark (the newest message time already logged) so nothing is written
+    ;; twice, even across restarts.  Live logging advances the mark; history
+    ;; logging is gated by it and only writes strictly-newer messages.
+    (defvar my/clatter-log-highwater-file
+      (expand-file-name "clatter/log-highwater.el" user-emacs-directory)
+      "File persisting the newest-logged message time per (network . target).")
+    (defvar my/clatter--log-hw (make-hash-table :test 'equal)
+      "Map (network . downcased-target) -> (SECS . MSGID) of the newest logged
+message: SECS (float seconds) gates logging dedup, MSGID enables precise
+restart resume.")
+    (defvar my/clatter--log-hw-dirty nil
+      "Non-nil when `my/clatter--log-hw' has unsaved changes.")
+
+    (defun my/clatter--log-hw-load ()
+      "Load the persisted log high-water marks from disk."
+      (when (file-readable-p my/clatter-log-highwater-file)
+        (with-temp-buffer
+          (insert-file-contents my/clatter-log-highwater-file)
+          (ignore-errors
+            (dolist (cell (read (current-buffer)))
+              ;; Value is (SECS . MSGID); migrate an old bare-float SECS entry.
+              (puthash (car cell)
+                       (if (consp (cdr cell)) (cdr cell) (cons (cdr cell) nil))
+                       my/clatter--log-hw))))))
+
+    (defun my/clatter--log-hw-save ()
+      "Persist the log high-water marks to disk if changed."
+      (when my/clatter--log-hw-dirty
+        (let (alist)
+          (maphash (lambda (k v) (push (cons k v) alist)) my/clatter--log-hw)
+          (with-temp-file my/clatter-log-highwater-file
+            (let ((print-length nil) (print-level nil))
+              (prin1 alist (current-buffer))))
+          (setq my/clatter--log-hw-dirty nil))))
+
+    (defun my/clatter--log-hw-bump (network target time &optional msgid)
+      "Advance NETWORK/TARGET's high-water mark to (TIME . MSGID) when newer."
+      (when (and (stringp target) time)
+        (let* ((key (cons network (downcase target)))
+               (secs (float-time time))
+               (cur-secs (car (gethash key my/clatter--log-hw))))
+          (when (or (null cur-secs) (> secs cur-secs))
+            (puthash key (cons secs msgid) my/clatter--log-hw)
+            (setq my/clatter--log-hw-dirty t)))))
+
+    (defun my/clatter--log-history (conn batch-type target messages)
+      "Write CHATHISTORY playback MESSAGES for TARGET to the local logs.
+Only messages newer than the persisted high-water mark are written.
+Wrapped in `condition-case' so a log-write error can't abort the other
+batch hooks (this one runs before gap paging and the renderer)."
+      (condition-case err
+          (when (and (member batch-type '("chathistory" "draft/chathistory"))
+                     (stringp target))
+            (let* ((network (clatter-connection-network-id conn))
+                   (hw-secs (car (gethash (cons network (downcase target))
+                                          my/clatter--log-hw))))
+              (dolist (msg messages)
+                (let* ((sender (plist-get msg :sender))
+                       (text (plist-get msg :text))
+                       (time (plist-get msg :time))
+                       (secs (and time (float-time time))))
+                  ;; Compare every message to the pre-batch mark: all
+                  ;; genuinely-new messages log; `-bump' advances the mark.
+                  (when (and (stringp sender) (stringp text)
+                             (or (null secs) (null hw-secs) (> secs hw-secs)))
+                    ;; `clatter-log--write' honors `clatter-log-enable' and
+                    ;; `clatter-log-exclude-targets' itself.
+                    (clatter-log--write
+                     network target
+                     (if (eq (plist-get msg :type) 'action)
+                         (format "* %s %s" sender text)
+                       (format "<%s> %s" sender text))
+                     time)
+                    (my/clatter--log-hw-bump network target time
+                                             (my/clatter--msg-msgid msg)))))))
+        (error (message "[clatter] log-history error on %s: %S" target err))))
+
+    (defun my/clatter--log-hw-track-live (conn sender target text server-time)
+      "Advance the high-water mark for a live message just logged.
+Keeps history replay from re-logging what we already saw in real time, and
+records the message's msgid so a restart can resume precisely by msgid."
+      (let* ((network (clatter-connection-network-id conn))
+             (my-nick (clatter-connection-nick conn))
+             (log-target (if (clatter-channel-name-p target)
+                             target
+                           (if (string-equal target my-nick)
+                               (clatter-prefix-nick sender)
+                             target)))
+             (msgid (and (stringp text) (> (length text) 0)
+                         (get-text-property 0 'clatter-msgid text))))
+        (my/clatter--log-hw-bump network log-target
+                                 (or server-time (current-time)) msgid)))
+
+    (my/clatter--log-hw-load)
+    (add-hook 'clatter-batch-complete-hook #'my/clatter--log-history)
+    (advice-add 'clatter-log--on-privmsg :after #'my/clatter--log-hw-track-live)
+    (advice-add 'clatter-log--on-action  :after #'my/clatter--log-hw-track-live)
+    (advice-add 'clatter-log-flush :after #'my/clatter--log-hw-save)
+    (add-hook 'kill-emacs-hook #'my/clatter--log-hw-save)
+
+    ;; `clatter-get-or-create-buffer' returns whatever the registry
+    ;; (`clatter--buffer-alist') holds without checking `buffer-live-p', so a
+    ;; stale entry pointing at a killed buffer makes every handler fail with
+    ;; "Selecting deleted buffer".  Treat a dead buffer as absent and prune it,
+    ;; so the registry self-heals and the buffer is recreated fresh.
+    (define-advice clatter-get-buffer
+        (:around (orig network target) sj/skip-dead-buffers)
+      (let ((buf (funcall orig network target)))
+        (if (and buf (not (buffer-live-p buf)))
+            (progn (clatter-remove-buffer network target) nil)
+          buf)))
+
+    ;; Cleanly stop clatter without detaching any channels in soju.  Killing a
+    ;; channel buffer normally sends PART (see `clatter-cmd-close'), which soju
+    ;; turns into a detach.  `clatter-disconnect-all' sends QUIT and clears each
+    ;; connection's process, so the kept PART-on-kill hook sends no PART (it is
+    ;; guarded by a live process) yet still runs `clatter-remove-buffer' to
+    ;; prune the registry.  Use before upgrading clatter: never upgrade live.
+    (defun my/clatter-stop ()
+      "Disconnect every clatter network and kill all clatter buffers.
+No channels are detached: connections QUIT (not PART) and the buffer
+registry is pruned so no dead buffers are left behind."
+      (interactive)
+      (clatter-disconnect-all)
+      (dolist (b (buffer-list))
+        (when (buffer-live-p b)
+          (with-current-buffer b
+            (when (derived-mode-p 'clatter-mode)
+              (kill-buffer b)))))
+      (setq clatter--buffer-alist nil)
+      (message "clatter: stopped, all buffers killed (no channels detached)"))
     :custom
     ;; Show activity crumbs in all clatter buffers, not just the active one.
     (clatter-track-in-buffer-mode-line t)
     (clatter-message-order 'oldest-first)
     (clatter-fill-column nil)
+    ;; Messages fetched per CHATHISTORY request (up from 50).  Also the cap on
+    ;; the on-join gap fetch above; soju clamps this to its own per-request
+    ;; limit (~100), so busier gaps page in with `M-x clatter-chathistory-more'.
+    (clatter-chathistory-limit 100)
+    ;; Local channel logging to ~/.emacs.d/var/clatter/logs/NETWORK/TARGET-DATE.log
+    ;; (feeds `/search', which greps these on-disk logs).
+    (clatter-log-enable t)
+    ;; A single soju "control" connection: `:bouncer t' plus a bare
+    ;; `:username' (no "/network" suffix) makes clatter negotiate
+    ;; `soju.im/bouncer-networks', run BOUNCER LISTNETWORKS, and fan out one
+    ;; child buffer per upstream network automatically.  Each child inherits
+    ;; the bouncer credentials and pulls its own nick from the bouncer, so
+    ;; per-network nick/username entries are no longer needed.  (Native
+    ;; support landed upstream 2026-08; SASL authcid now uses `:username',
+    ;; which retired the old `:override' advice and per-network config.)
     (clatter-networks
      `(
-       ("libera"
+       ("soju"
         ;; The TLS cert is issued for the bouncer host only (no SAN for the
         ;; gamja. subdomain), though both names resolve to the same host.
         :server ,sj/irc-server
         :port 16502
         :tls t
-        ;; Must match the nick soju already holds upstream: clatter sends a
-        ;; literal NICK, which soju forwards, renaming us on the network.
         :nick "srijan"
-        ;; soju selects the upstream network from the SASL authcid suffix.
-        :username "srijan/libera"
+        ;; Bare bouncer username (no "/network"): marks this the control
+        ;; connection that lists networks and fans out children.
+        :username "srijan"
         :sasl plain
-        ;; Bouncer session: skip NickServ IDENTIFY and nick reclaim.
         :bouncer t
         ))))
 #+end_src
