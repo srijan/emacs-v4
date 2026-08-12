@@ -4777,7 +4777,9 @@ With prefix arg, refresh the tag cache first."
                 ("C-c C-." . clatter-track-switch)
                 ("C-c :"   . clatter-track-list)
                 ("C-c n"   . clatter-nicklist-toggle)
-                ("C-c C-n" . clatter-nicklist-toggle))
+                ("C-c C-n" . clatter-nicklist-toggle)
+                ("C-c b"   . my/clatter-status)
+                ("C-c C-p" . clatter-chathistory-more))
     :config
     (clatter-setup)
     (require 'gnutls)
@@ -4892,7 +4894,15 @@ BOUNDARY is nil or not present (no overlap), return MESSAGES unchanged."
     ;; window.  Page forward from the newest message of each batch until a
     ;; channel is caught up (empty batch / no forward progress) or a safety cap.
     (defvar my/clatter-chathistory-max-age-days 3
-      "Cap, in days, on how far back the on-join gap fetch reaches.")
+      "Hard floor, in days, on how far back any on-join fetch may reach.
+This is the cap for a mid-session reconnect gap-fill; it is NOT the fresh-start
+display window (see `my/clatter-startup-history-hours').")
+    (defvar my/clatter-startup-history-hours 4
+      "How much history to replay from soju on a FRESH clatter start.
+On first join of a channel this session the buffer is prefilled with this
+many hours from the bouncer, regardless of what was already seen/logged before
+the last stop -- so opening clatter at 3pm shows history back to 11am, not just
+the gap since you quit.  Capped by `my/clatter-chathistory-max-age-days'.")
     (defvar my/clatter-chathistory-max-pages 100
       "Safety cap on CHATHISTORY pages fetched per channel during gap catch-up.
 At ~100 messages per page this bounds a single channel's replay to ~10k,
@@ -4998,31 +5008,38 @@ renderer)."
                  (clatter-chathistory--available-p conn))
         (let* ((network (clatter-connection-network-id conn))
                (buf (clatter-get-buffer network channel))
+               ;; In-memory cursor: non-nil only when this buffer already holds
+               ;; messages THIS session -- i.e. a mid-session reconnect.  On a
+               ;; fresh clatter start the buffer is new, so this is nil.
                (mem-last (and buf (buffer-local-value
                                    'clatter-chathistory--last-timestamp buf)))
                (mem-secs (and mem-last (float-time mem-last)))
-               ;; Persisted per-channel cursor (SECS . MSGID) -- survives a full
-               ;; stop/restart, unlike the in-memory cursor.
-               (hw (gethash (cons network (downcase channel)) my/clatter--log-hw))
-               (hw-secs (car hw))
-               (hw-msgid (cdr hw))
-               ;; Floor is `my/clatter-chathistory-max-age-days' back -- NOT a
-               ;; hardcoded 24h; change that var to widen/narrow the window.
+               ;; Hard floor: never fetch further back than this.
                (floor-secs (float-time
                             (time-subtract (current-time)
                                            (days-to-time my/clatter-chathistory-max-age-days))))
-               ;; Resume from the newest cursor we have (in-memory OR persisted),
-               ;; but never reach past the floor: a short absence fetches just
-               ;; the gap; a long one caps at the floor.
-               (since-secs (max (or mem-secs 0) (or hw-secs 0) floor-secs))
+               (since-secs
+                (if mem-secs
+                    ;; Reconnect within this session: fill only the gap since the
+                    ;; newest message already in the buffer (floored).  Live
+                    ;; render-dedup drops any boundary message soju re-includes.
+                    (max mem-secs floor-secs)
+                  ;; Fresh start: replay the whole startup window from soju,
+                  ;; which retains the backlog.  The persisted log high-water is
+                  ;; deliberately NOT consulted here -- it gates on-disk log
+                  ;; dedup, not the display -- so history from before the last
+                  ;; stop is shown again (3pm-yesterday .. now, not just the gap).
+                  (max floor-secs
+                       (float-time
+                        (time-subtract (current-time)
+                                       (seconds-to-time
+                                        (* my/clatter-startup-history-hours 3600)))))))
                (since (seconds-to-time since-secs)))
-          ;; Seed the render-dedup boundary with the persisted msgid so the
-          ;; restart re-fetch (a timestamp bound re-includes the boundary
-          ;; second, since soju compares at whole-second granularity) drops
-          ;; everything up to and including the last-seen message.  `hw-secs'
-          ;; still floors the fetch window above.
-          (when hw-msgid
-            (puthash (cons network (downcase channel)) hw-msgid
+          ;; Fresh start wants the FULL window: clear any stale render-dedup
+          ;; boundary (e.g. left by a same-session `my/clatter-stop') so
+          ;; `my/clatter--after-msgid' does not drop the older half of it.
+          (unless mem-secs
+            (remhash (cons network (downcase channel))
                      my/clatter--last-rendered-msgid))
           (my/clatter--gap-fetch conn channel
                                  (my/clatter--gap-timestamp-selector since)
@@ -5163,11 +5180,257 @@ registry is pruned so no dead buffers are left behind."
               (kill-buffer b)))))
       (setq clatter--buffer-alist nil)
       (message "clatter: stopped, all buffers killed (no channels detached)"))
+
+    ;; Show an ERC/weechat-style "unread from here" line when jumping to a
+    ;; channel.  Upstream only draws the read-marker overlay on an INCOMING
+    ;; server MARKREAD and clears it on focus (`clatter-read-marker-auto-send'),
+    ;; so a normal jump shows nothing.  The jump commands (clatter-track-switch,
+    ;; the consult source, the activity list) all call `clatter-clear-activity'
+    ;; with the unread count still set, so draw the boundary line there -- just
+    ;; before it resets -- then let it persist (auto-send is nil below).
+    ;; `clatter-read-marker--update-visual' positions purely from
+    ;; `clatter--unread-count' and only gates on a non-nil `--msgid', so seed one.
+    (defun my/clatter--unread-boundary-pos ()
+      "Return the buffer position where the unread-marker line belongs, or nil.
+Persisted `clatter--last-read-time' (restored from `clatter-read-state-file'
+on restart) marks the boundary; the overlay's `before-string' is drawn just
+ABOVE the returned position.  Order-aware:
+- oldest-first (unread at the bottom): the first message NEWER than last-read.
+- newest-first (unread at the top): the first message NOT newer than last-read
+  (i.e. the first already-read one), so the line lands below the unread block.
+Scans by the `clatter-server-time' text property -- exact and multi-line safe.
+Returns nil if there is no persisted read time to anchor on."
+      (when clatter--last-read-time
+        (let ((oldest-first (eq clatter-message-order 'oldest-first)))
+          (save-excursion
+            (goto-char (point-min))
+            (let ((pos nil))
+              (while (and (not pos) (< (point) (point-max)))
+                (let ((st (get-text-property (point) 'clatter-server-time)))
+                  (cond
+                   ((null st)
+                    (goto-char (or (next-single-property-change
+                                    (point) 'clatter-server-time nil (point-max))
+                                   (point-max))))
+                   ((if oldest-first
+                        (time-less-p clatter--last-read-time st)
+                      (not (time-less-p clatter--last-read-time st)))
+                    (setq pos (line-beginning-position)))
+                   (t
+                    (goto-char (or (next-single-property-change
+                                    (point) 'clatter-server-time nil (point-max))
+                                   (point-max)))))))
+              pos)))))
+
+    (defun my/clatter--place-unread-overlay (buffer)
+      "Draw the \"unread from here\" line in BUFFER, or clear it when caught up.
+Positions by persisted read time when possible, else falls back to counting
+`clatter--unread-count' messages from the appropriate end (order-aware)."
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (when (and (derived-mode-p 'clatter-mode) clatter-read-marker-enabled)
+            (when clatter-read-marker--overlay
+              (delete-overlay clatter-read-marker--overlay)
+              (setq clatter-read-marker--overlay nil))
+            (let ((pos (when (> (or clatter--unread-count 0) 0)
+                         (or (my/clatter--unread-boundary-pos)
+                             (save-excursion
+                               (if (eq clatter-message-order 'oldest-first)
+                                   (progn
+                                     (goto-char (point-max))
+                                     (forward-line (- clatter--unread-count)))
+                                 (goto-char (or clatter--messages-marker (point-min)))
+                                 (forward-line clatter--unread-count))
+                               (line-beginning-position))))))
+              (when pos
+                (let ((ov (make-overlay pos (1+ pos))))
+                  (overlay-put ov 'before-string
+                               (propertize (concat (make-string 40 ?\x2500) "\n")
+                                           'face 'clatter-read-marker-line))
+                  (overlay-put ov 'clatter-read-marker t)
+                  (setq clatter-read-marker--overlay ov))))))))
+
+    ;; Draw on jump: the jump commands (clatter-track-switch, consult source,
+    ;; activity list, status buffer) all call `clatter-clear-activity' with the
+    ;; unread count still set, so draw the boundary just before it resets, then
+    ;; let it persist (auto-send is nil below, so focus does not wipe it).
+    (defun my/clatter--draw-unread-marker (buffer &rest _)
+      "Advice for `clatter-clear-activity': draw the unread boundary line."
+      (my/clatter--place-unread-overlay buffer))
+    (advice-add 'clatter-clear-activity :before #'my/clatter--draw-unread-marker)
+
+    ;; Draw after history replay too, so on restart the marker is already there
+    ;; when you open a channel -- without needing a jump.  Fires per history
+    ;; page; the boundary is stable once the first post-read message arrives.
+    (defun my/clatter--marker-after-history (conn batch-type target _messages)
+      "Advice/hook: place the unread marker once history for TARGET replays.
+Wrapped in `condition-case': `add-hook' prepends, so this runs before
+`my/clatter--gap-continue' / `my/clatter--log-history' on the batch hook,
+and an unguarded error here would abort history paging and logging."
+      (condition-case err
+          (when (and (member batch-type '("chathistory" "draft/chathistory"))
+                     (stringp target))
+            (let ((buf (clatter-get-buffer
+                        (clatter-connection-network-id conn) target)))
+              (when (and buf (not (eq buf (current-buffer))))
+                (my/clatter--place-unread-overlay buf))))
+        (error (message "[clatter] marker-after-history error on %s: %S"
+                        target err))))
+    (add-hook 'clatter-batch-complete-hook #'my/clatter--marker-after-history)
+
+    ;; --- weechat/irssi-style status buffer ---------------------------------
+    ;; A persistent roster of EVERY network and channel/query with unread
+    ;; indicators.  Upstream `clatter-track-list' (*clatter-activity*) only
+    ;; lists targets that currently have activity, so it is empty when things
+    ;; are quiet; this always shows the full tree.  Grouped by network (server
+    ;; buffer first, then channels, then queries); RET / mouse-1 jumps and
+    ;; clears.  Redraws off clatter's existing track timer (advising
+    ;; `clatter-track--update'), so there is no extra timer and it only rebuilds
+    ;; when the buffer is actually displayed.
+    (defvar my/clatter-status-buffer-name "*clatter-status*"
+      "Name of the persistent clatter status/roster buffer.")
+
+    (defun my/clatter-status--sort-key (buf)
+      "Sort key (TYPE-RANK . NAME) for BUF within its network."
+      (with-current-buffer buf
+        (cons (pcase clatter--buffer-type ('server 0) ('channel 1) (_ 2))
+              (downcase (or clatter--target "")))))
+
+    (defun my/clatter-status--line-less (a b)
+      "Order clatter buffers A and B: server, channels, queries; then name."
+      (let ((ka (my/clatter-status--sort-key a))
+            (kb (my/clatter-status--sort-key b)))
+        (if (= (car ka) (car kb)) (string< (cdr ka) (cdr kb))
+          (< (car ka) (car kb)))))
+
+    (defun my/clatter-status--line (buf)
+      "Return a propertized roster line string for clatter BUF.
+Reads BUF's locals but does NOT insert -- the caller inserts it into the
+status buffer, so this must never run `insert' inside BUF."
+      (with-current-buffer buf
+        (let* ((unread (or clatter--unread-count 0))
+               (mention clatter--has-mention)
+               (server (eq clatter--buffer-type 'server))
+               (name (or clatter--target "*server*"))
+               (type (cond (mention 'mention)
+                           ((eq clatter--buffer-type 'query) 'dm)
+                           (t 'activity)))
+               (marker (cond (mention "@") ((> unread 0) "*") (t " ")))
+               (count (if (> unread 0) (format " (%d)" unread) ""))
+               (face (cond ((> unread 0) (clatter-track--face type nil))
+                           (server 'shadow)
+                           (t 'default))))
+          (propertize (format "  %s %s%s\n" marker name count)
+                      'face face
+                      'my/clatter-status-buffer buf
+                      'mouse-face 'highlight
+                      'help-echo (format "%d unread" unread)))))
+
+    (defun my/clatter-status-refresh (&rest _)
+      "Redraw the clatter status buffer if it is live.
+Runs off the `clatter-track--update' advice (the message/activity path), so
+guard it: an unguarded error would propagate into whoever bumped activity."
+      (interactive)
+      (condition-case err
+          (let ((buf (get-buffer my/clatter-status-buffer-name)))
+            (when (buffer-live-p buf)
+              (with-current-buffer buf
+                (let ((inhibit-read-only t)
+                      (pos (point))
+                      (groups (make-hash-table :test 'equal))
+                      (order nil))
+                  (erase-buffer)
+                  (dolist (b (clatter-all-buffers))
+                    (let ((net (buffer-local-value 'clatter--network b)))
+                      (unless (member net order) (push net order))
+                      (push b (gethash net groups))))
+                  (dolist (net (sort order #'string<))
+                    (insert (propertize (format "%s\n" net) 'face '(bold underline)))
+                    (dolist (b (sort (gethash net groups)
+                                     #'my/clatter-status--line-less))
+                      (insert (my/clatter-status--line b)))
+                    (insert "\n"))
+                  (goto-char (min pos (point-max)))))))
+        (error (message "[clatter] status-refresh error: %S" err))))
+
+    (defun my/clatter-status--jump ()
+      "Jump to the clatter buffer on the current line and clear its activity."
+      (interactive)
+      (let ((buf (get-text-property (point) 'my/clatter-status-buffer)))
+        (if (buffer-live-p buf)
+            (progn (pop-to-buffer buf) (clatter-clear-activity buf))
+          (message "No clatter buffer on this line"))))
+
+    (defun my/clatter-status--line-unread-p (pos)
+      "Non-nil if the roster line at POS points to a buffer with unread."
+      (let ((buf (get-text-property pos 'my/clatter-status-buffer)))
+        (and (buffer-live-p buf)
+             (> (or (buffer-local-value 'clatter--unread-count buf) 0) 0))))
+
+    (defun my/clatter-status-next-unread (&optional backward)
+      "Move point to the next roster line with unread messages, wrapping.
+With prefix arg BACKWARD, move to the previous one instead."
+      (interactive "P")
+      (let (positions)
+        (save-excursion
+          (goto-char (point-min))
+          (while (not (eobp))
+            (let ((bol (line-beginning-position)))
+              (when (my/clatter-status--line-unread-p bol)
+                (push bol positions)))
+            (forward-line 1)))
+        (setq positions (nreverse positions))
+        (if (not positions)
+            (message "No unread channels")
+          (let* ((cur (line-beginning-position))
+                 (target
+                  (if backward
+                      (or (car (last (seq-filter (lambda (p) (< p cur)) positions)))
+                          (car (last positions)))
+                    (or (seq-find (lambda (p) (> p cur)) positions)
+                        (car positions)))))
+            (goto-char target)))))
+
+    (defvar my/clatter-status-mode-map
+      (let ((map (make-sparse-keymap)))
+        (define-key map (kbd "RET") #'my/clatter-status--jump)
+        (define-key map [mouse-1]   #'my/clatter-status--jump)
+        (define-key map (kbd "TAB") #'my/clatter-status-next-unread)
+        (define-key map (kbd "<backtab>")
+                    (lambda () (interactive) (my/clatter-status-next-unread t)))
+        (define-key map (kbd "g")   #'my/clatter-status-refresh)
+        map)
+      "Keymap for `my/clatter-status-mode'.")
+
+    (define-derived-mode my/clatter-status-mode special-mode "Clatter-Status"
+      "Major mode for the persistent clatter status/roster buffer."
+      (setq-local revert-buffer-function
+                  (lambda (&rest _) (my/clatter-status-refresh))))
+
+    (defun my/clatter-status ()
+      "Open the clatter status buffer (all networks + channels, with unread)."
+      (interactive)
+      (let ((buf (get-buffer-create my/clatter-status-buffer-name)))
+        (with-current-buffer buf
+          (unless (derived-mode-p 'my/clatter-status-mode)
+            (my/clatter-status-mode)))
+        (my/clatter-status-refresh)
+        (pop-to-buffer buf)))
+
+    ;; Keep the roster live: clatter's track timer / activity changes call
+    ;; `clatter-track--update', which now also repaints the status buffer.
+    ;; (C-c b -> my/clatter-status and C-c C-p -> clatter-chathistory-more, the
+    ;; manual scroll-back "load older history", are bound in :bind above so they
+    ;; live in `clatter-mode-map' only.)
+    (advice-add 'clatter-track--update :after #'my/clatter-status-refresh)
     :custom
     ;; Show activity crumbs in all clatter buffers, not just the active one.
     (clatter-track-in-buffer-mode-line t)
     (clatter-message-order 'oldest-first)
     (clatter-fill-column nil)
+    ;; Keep the "unread from here" line (drawn by `my/clatter--draw-unread-marker')
+    ;; on screen after you focus the channel, instead of auto-clearing it.
+    (clatter-read-marker-auto-send nil)
     ;; Messages fetched per CHATHISTORY request (up from 50).  Also the cap on
     ;; the on-join gap fetch above; soju clamps this to its own per-request
     ;; limit (~100), so busier gaps page in with `M-x clatter-chathistory-more'.
