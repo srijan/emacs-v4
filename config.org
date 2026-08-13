@@ -4870,20 +4870,6 @@ BOUNDARY is nil or not present (no overlap), return MESSAGES unchanged."
         (unless (nth 3 args) (setf (nth 3 args) ""))
         args))
 
-    ;; Upstream sends `CHATHISTORY TARGETS * *', but the IRCv3 spec requires
-    ;; two real timestamps; soju rejects `*' with
-    ;; FAIL CHATHISTORY/INVALID_PARAMS ("Invalid first bound"), so offline-DM
-    ;; discovery fails on every connect.  Send an epoch..now window instead.
-    (define-advice clatter-chathistory-fetch-targets
-        (:override (conn &optional limit) sj/valid-targets-bounds)
-      (when (clatter-chathistory--available-p conn)
-        (let ((n (or limit clatter-chathistory-limit)))
-          (clatter-send
-           conn
-           (format "CHATHISTORY TARGETS timestamp=1970-01-01T00:00:00.000Z timestamp=%s %d"
-                   (format-time-string "%Y-%m-%dT%H:%M:%S.000Z" nil t)
-                   n)))))
-
     ;; On (re)connect fetch the whole gap since we were last here, not just the
     ;; last `clatter-chathistory-limit' messages.  Upstream only gap-fills when
     ;; an in-memory cursor exists (lost on restart) and otherwise fetches
