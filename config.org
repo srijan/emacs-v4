@@ -4232,6 +4232,14 @@ One alternative can be to have a separate script to copy the required passwords 
       (auth-source-pick-first-password
        :host "work-jira" :user "token"))
 
+    (sj-browse-url-set-handler-rx
+     'jira
+     `((seq line-start ,sj/jira-base-url "/browse/"))
+     (lambda (url &rest _)
+       (if (string-match "/browse/\\([A-Za-z][A-Za-z0-9]*-[0-9]+\\)" url)
+           (jira-detail-show-issue (match-string 1 url))
+         (funcall sj-browse-url-default-handler url))))
+
     ;; Issue fields customizations - define custom fields
     ;; (add-to-list 'jira-issues-fields
     ;;              '(:epic-link . ((:path . (fields customfield_10002))
@@ -4438,16 +4446,17 @@ One alternative can be to have a separate script to copy the required passwords 
         (if (and (eq (car document) 'base)
                  (string-match-p "\\`https?://kagi\\.com/" (alist-get 'href (cadr document))))
             (cons (eww-document-base (alist-get 'href (cadr document))
-                                      (sj-eww-kagi-declutter (caddr document)))
+                                     (sj-eww-kagi-declutter (caddr document)))
                   rest)
           args))))
   (defcustom sj-browse-url-handlers `()
-    "Alist of (KEY REGEX-LIST . FUNCTION) pairs for URL handling.
+    "Alist of (KEY MATCHER . FUNCTION) pairs for URL handling.
     KEY is a symbol identifying the handler.
-    REGEX-LIST is a list of regex patterns (strings) to match against URLs.
-    FUNCTION is called with the URL when any regex matches."
+    MATCHER is either a list of regex patterns (strings) to match against
+    URLs, or a predicate function called with the URL.
+    FUNCTION is called with the URL when MATCHER matches."
     :type '(alist :key-type symbol
-                  :value-type (cons (repeat string) function))
+                  :value-type (cons (choice (repeat string) function) function))
     :group 'sj-browse)
 
   (defcustom sj-browse-url-default-handler 'eww-browse-url
@@ -4455,10 +4464,12 @@ One alternative can be to have a separate script to copy the required passwords 
     :type 'function
     :group 'sj-browse)
 
-  (defun sj-browse-url-set-handler (key regex-list handler)
-    "Set or update handler for KEY with REGEX-LIST and HANDLER function."
+  (defun sj-browse-url-set-handler (key matcher handler)
+    "Set or update handler for KEY with MATCHER and HANDLER function.
+  MATCHER is a list of regex strings or a predicate function of one
+  argument (the URL)."
     (setq sj-browse-url-handlers
-          (cons (cons key (cons regex-list handler))
+          (cons (cons key (cons matcher handler))
                 (assq-delete-all key sj-browse-url-handlers))))
 
   ;; Helper function to make rx usage cleaner
@@ -4472,23 +4483,15 @@ One alternative can be to have a separate script to copy the required passwords 
   (defun sj-browse-url (url &optional new-window)
     "Browse URL using configured handlers or default handler."
     (interactive (browse-url-interactive-arg "URL: "))
-    (let ((handler (or (cl-loop for (regex . func) in sj-browse-url-handlers
-                                when (string-match-p regex url)
+    (let ((handler (or (cl-loop for (key matcher . func) in sj-browse-url-handlers
+                                when (if (functionp matcher)
+                                         (funcall matcher url)
+                                       (cl-some (lambda (regex)
+                                                  (string-match-p regex url))
+                                                matcher))
                                 return func)
                        sj-browse-url-default-handler)))
       (funcall handler url new-window)))
-
-  (defun sj-browse-url (url &optional new-window)
-    "Browse URL using configured handlers or default handler."
-    (interactive (browse-url-interactive-arg "URL: "))
-    (let ((handler (or (cl-loop for (key regex-list . func) in sj-browse-url-handlers
-                                when (cl-some (lambda (regex)
-                                                (string-match-p regex url))
-                                              regex-list)
-                                return func)
-                       sj-browse-url-default-handler)))
-      (funcall handler url new-window)))
-
 
   (setopt browse-url-browser-function 'sj-browse-url)
 #+end_src
@@ -4782,6 +4785,17 @@ One alternative can be to have a separate script to copy the required passwords 
           mastodon-auth-use-auth-source nil
           mastodon-tl--highlight-current-toot t
           )
+
+    ;; Fediverse URLs span arbitrary domains, so a predicate matcher is
+    ;; needed instead of regexes.  On lookup failure mastodon.el calls
+    ;; `browse-url' itself, which would recurse into the dispatcher and
+    ;; match this handler again; bind it to the default handler instead.
+    (sj-browse-url-set-handler
+     'mastodon
+     #'mastodon--fedi-url-p
+     (lambda (url &rest _)
+       (let ((browse-url-browser-function sj-browse-url-default-handler))
+         (mastodon-url-lookup url))))
     )
 #+end_src
 *** Reddit
