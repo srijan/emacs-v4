@@ -3044,6 +3044,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<denote_config>>
 #+end_src
+**** COMMENT Not tangling this for now
 #+begin_src emacs-lisp :tangle (expand-file-name "docs/notes/denote_config.el" (or (bound-and-true-p sj/sync-dir) "~/Sync")) :epilogue (format-time-string ";; Last generated on %c")
   ;;; post-init.el --- -*- no-byte-compile: t; lexical-binding: t; -*-
   ;; This file has been generated from my emacs's config.org file and is for
@@ -3102,6 +3103,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
   <<koreader_config>>
 #+end_src
+**** COMMENT Not tangling this for now
 #+begin_src emacs-lisp :tangle (expand-file-name "docs/notes/denote_config.el" (or (bound-and-true-p sj/sync-dir) "~/Sync")) :noweb yes
   <<koreader_config>>
 #+end_src
