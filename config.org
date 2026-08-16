@@ -2853,27 +2853,74 @@ One alternative can be to have a separate script to copy the required passwords 
 
 #+END_SRC
 ** Notes
-*** COMMENT Howm
+*** Attachments
+#+begin_src emacs-lisp :tangle "post-init.el"
+  ;; One shared org-attach pool at the notes root instead of a data/
+  ;; directory next to each note's folder.  Absolute path: the default is
+  ;; resolved relative to each org file's own directory.  Nothing outside
+  ;; the notes tree uses org-attach today, so the global setting is safe.
+  (setopt org-attach-id-dir (sj/sync "docs/notes/data/"))
+#+end_src
+*** Howm
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package howm
     :ensure t
-    :defer t
-    :bind (("C-c n ;" . howm-menu))
+    :demand t
     :init
+    (with-eval-after-load 'org
+      (define-key org-mode-map (kbd "C-c ;") nil))
     (require 'howm-org)
     (setopt howm-directory (sj/sync "docs/notes"))
     (setopt howm-follow-theme t)
-    (setopt howm-file-name-format "%Y%m%dT%H%M%S.org")
+    (setopt howm-file-name-format "howm/%Y%m%dT%H%M%S.org")
     (setopt howm-view-title-header "#+title:")
+    (setopt howm-remember-first-line-to-title t)
+    (setopt howm-keyword-file (sj/sync "docs/notes/.howm-keys"))
+    (setopt howm-history-file (sj/sync "docs/notes/.howm-history"))
 
     :config
+    ;; Don't extend howm-mode to howm's own state files: .howm-keys and
+    ;; .howm-history live inside the notes dir (for mobile sync), and
+    ;; howm-mode on the history buffer makes every search's history write
+    ;; re-run action-lock fontification in a never-displayed buffer where
+    ;; jit-lock isn't initialized (jit-lock-fontify-now: number-or-marker-p
+    ;; nil).  howm-excluded-file-regexp already covers dotfiles.
+    (defun my/howm-set-mode-unless-excluded ()
+      "Enable howm-mode for files under the notes dir, except excluded ones."
+      (unless (and buffer-file-name
+                   (string-match-p howm-excluded-file-regexp buffer-file-name))
+        (howm-set-mode)))
+    (add-hook 'find-file-hook #'my/howm-set-mode-unless-excluded)
+
+    ;; Search with ripgrep: faster than BSD grep on this corpus, and it
+    ;; skips hidden paths (.zettel-notes/ app state) by default.
+    (setopt howm-view-use-grep t)
+    (setopt howm-view-grep-command "rg")
+    (setopt howm-view-grep-option "-nH --no-heading --color never")
+    (setopt howm-view-grep-extended-option nil)
+    (setopt howm-view-grep-fixed-option "-F")
+    (setopt howm-view-grep-expr-option nil)
+    (setopt howm-view-grep-file-stdin-option nil)
+
+    ;; Buffer names from note titles instead of bare timestamp filenames.
+    (add-hook 'howm-mode-hook #'howm-mode-set-buffer-name)
+    (add-hook 'after-save-hook #'howm-mode-set-buffer-name)
+
     ;; (add-hook 'howm-mode-hook #'tab-line-mode)
-    ;; In case you don't always use Org-mode files, the following lines
-    ;; ensure that Denote's title format for plain-text and Markdown files
-    ;; will also be recognized.
     (setopt howm-view-title-regexp
             "^#?\\+?[tT][iI][tT][lL][eE]:\\( +\\(.*\\)\\|\\)$")
     (setopt howm-view-title-regexp-grep "^(#?\\+?[tT][iI][tT][lL][eE]:) +")
+
+    ;; The menu file's entries are org headings (`* <<< %menu%'), which the
+    ;; denote-style title regexp above can't see, so the menu's paragraph
+    ;; trim would keep the whole file and define duplicate shortcut keys
+    ;; ("Multiple definitions for key(s) ..." warning, wrong jump targets).
+    ;; Render just the menu with org-heading entry boundaries.
+    (defun my/howm-menu-org-boundaries (orig &rest args)
+      "Call ORIG with `howm-view-title-regexp' matching org headings."
+      (let ((howm-view-title-regexp "^\\*\\( +\\(.*\\)\\|\\)$"))
+        (apply orig args)))
+    (advice-add 'howm-menu-insert-paragraph :around #'my/howm-menu-org-boundaries)
 
     ;; Advise `howm-view-item-basename' so that if its return value
     ;; includes "--", only the text before is returned.
@@ -2905,10 +2952,7 @@ One alternative can be to have a separate script to copy the required passwords 
 #+begin_src emacs-lisp
   (setq my-notes-dir           (sj/sync "docs/notes/"))
   (setq my-journals-dir        (concat my-notes-dir  "journals"))
-  (setq my-zettels-dir         (concat my-notes-dir  "main"))
   (setq my-templates-dir       (concat my-notes-dir  "templates"))
-  (setq my-reference-notes-dir (concat my-notes-dir  "reference"))
-  (setq my-inbox-notes-dir     (concat my-notes-dir  "inbox"))
 
   (use-package denote
     ;; :demand
@@ -2952,34 +2996,13 @@ One alternative can be to have a separate script to copy the required passwords 
           (find-file (car files)))
          (t
           (denote week '("weeklyreview") nil nil nil 'weekly-review)))))
-    (defun my/denote-zettel ()
-      "Create a permanent Zettelkasten note with Folgezettel ID."
-      (interactive)
-      (let ((denote-directory my-zettels-dir))
-        (call-interactively #'denote-sequence)))
-    (defun my/denote-inbox-note ()
-      "Create a note in the inbox."
-      (interactive)
-      (let ((denote-directory my-inbox-notes-dir))
-        (call-interactively #'denote)))
-    (defun my/create-reference-note ()
-      "Create a reference note in my zettelkasten reference folder"
-      (interactive)
-      (let ((denote-directory my-reference-notes-dir)
-            (denote-known-keywords '("books" "music" "shows" "movies" "talks" "podcast")))
-        (call-interactively #'denote)))
     :hook (dired-mode . denote-dired-mode)
     :bind
     ( :map global-map
-      ("C-c n n" . my/denote-inbox-note)
-      ("C-c n N" . my/denote-zettel)
       ("C-c n d" . (lambda () (interactive) (dired my-notes-dir)))
-      ("C-c n D" . denote-sequence-dired)
       ("C-c n r" . my-weekly-review-journal)
-      ("C-c n l" . my/create-reference-note)
       )
     ( :map text-mode-map
-      ("C-c n i" . denote-link)
       ("C-c n R" . denote-rename-file-using-front-matter)
       )
     )
@@ -2994,16 +3017,6 @@ One alternative can be to have a separate script to copy the required passwords 
     :bind
     ("C-c n j" . denote-journal-new-or-existing-entry)
     )
-  (use-package denote-menu
-    :after denote)
-  (use-package denote-sequence
-    :after denote
-    :config
-    (require 'denote)
-    :custom
-    (denote-sequence-scheme 'alphanumeric))
-  (use-package denote-org
-    :after denote)
   (use-package consult-notes
     :after denote
     :init
@@ -3012,7 +3025,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (consult-notes-denote-mode 1)
     :bind
     ("C-c n f" . consult-notes)
-    ("C-c n s" . consult-notes-search-in-all-notes)
+    ("C-c n S" . consult-notes-search-in-all-notes)
     )
 #+end_src
 #+begin_src emacs-lisp :tangle "post-init.el" :noweb yes
