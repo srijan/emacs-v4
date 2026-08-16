@@ -2772,7 +2772,9 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; Tappable action buttons.  Each entry is (ICON TITLE HELP ACTION).
     ;; `call-interactively' so commands with interactive specs behave normally.
     (setq dashboard-navigator-buttons
-          `((("⟳" "Pull repo" "Pull Emacs repo changes"
+          `((("󱄍" "Restore desktop" "Restore saved desktop"
+              (lambda (&rest _) (call-interactively #'my/desktop-restore)))
+             ("⟳" "Pull repo" "Pull Emacs repo changes"
               (lambda (&rest _) (call-interactively #'sj-dashboard-pull)))
              ("⚙" "Tangle" "Tangle config.org"
               (lambda (&rest _) (call-interactively #'sj-dashboard-tangle)))
@@ -5907,6 +5909,207 @@ Lands the cursor on the channel you were just in, treemacs-style."
     ;; (eaf-bind-key nil "M-q" eaf-browser-keybinding)
     )
 #+end_src
+** Desktop save
+Save the desktop periodically and on exit, but never restore it automatically.
+=desktop.el= registers an ~after-init-hook~ entry that calls ~desktop-read~ when
+~desktop-save-mode~ is on; loading it from ~emacs-startup-hook~ (which runs
+later) means that entry either never fires or sees the mode still disabled.
+
+Faking ~desktop-file-modtime~ keeps ~desktop-save~ from asking "Current desktop
+was not loaded from a file.  Overwrite?", and the lock is only claimed when no
+other Emacs owns it.
+
+Because this session starts saving over the desktop file within seconds, each
+startup snapshots the file to =.emacs.desktop.YYYYMMDDThhmmss= (stamped with the
+file's own mtime, so restarting without changes doesn't add a duplicate) and
+prunes to the newest ~my/desktop-snapshot-keep~.  Restore reads a snapshot, so it
+still works after this session has overwritten the live file.
+
+=M-x my/desktop-restore= (also on the dashboard) prompts for a session, annotated
+with its buffer count and its buffers grouped by git project — parsed by reading
+the snapshot's ~desktop-create-buffer~ forms, never by evaluating them.  A
+desktop file stores uniquify's *base* buffer name, so two =README.md= look alike
+in it; grouping by project disambiguates them without having to reproduce
+whatever ~uniquify-buffer-name-style~ happens to be set to.
+Plain ~desktop-read~ refuses with "already loaded" because this Emacs holds the
+lock, so the lock is released just before reading; ~desktop-read~ reclaims it.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defvar my/desktop-snapshot-keep 5
+    "How many previous sessions to keep desktop snapshots for.")
+
+  (defvar my/desktop-snapshot-regexp "\\.[0-9]\\{8\\}T[0-9]\\{6\\}\\'"
+    "Suffix identifying a desktop snapshot of `desktop-base-file-name'.")
+
+  (defvar my/desktop-annotation-max-names 6
+    "How many buffer names a snapshot's annotation lists before eliding.")
+
+  (defun my/desktop--snapshot-files ()
+    "Desktop snapshots in `desktop-dirname', newest first."
+    (and desktop-dirname
+         (nreverse
+          (directory-files desktop-dirname t
+                           (concat "\\`" (regexp-quote desktop-base-file-name)
+                                   my/desktop-snapshot-regexp)))))
+
+  (defun my/desktop--snapshot-take ()
+    "Snapshot the current desktop file, then prune to `my/desktop-snapshot-keep'."
+    (let ((live (desktop-full-file-name)))
+      (when (file-exists-p live)
+        ;; Stamping with the file's own mtime makes repeated restarts idempotent.
+        (let ((dest (concat live
+                            (format-time-string
+                             ".%Y%m%dT%H%M%S"
+                             (file-attribute-modification-time
+                              (file-attributes live))))))
+          (unless (file-exists-p dest)
+            (copy-file live dest t t)))))
+    (dolist (old (nthcdr my/desktop-snapshot-keep (my/desktop--snapshot-files)))
+      (delete-file old)))
+
+  (defun my/desktop--project-of (file cache)
+    "Name of the git project containing FILE, or nil.
+  CACHE is a hash table memoizing the lookup per directory."
+    (when file
+      (let* ((dir (file-name-directory (expand-file-name file)))
+             (root (let ((hit (gethash dir cache 'miss)))
+                     (if (eq hit 'miss)
+                         (puthash dir
+                                  (ignore-errors (locate-dominating-file dir ".git"))
+                                  cache)
+                       hit))))
+        (and root (file-name-nondirectory (directory-file-name root))))))
+
+  (defun my/desktop--group-entries (entries)
+    "Group ENTRIES, a list of (BUFFER-NAME . FILE), by project.
+  Returns a list of (PROJECT . BUFFER-NAMES) in order of first appearance, with
+  the buffers belonging to no project last under a nil PROJECT.  Grouping is
+  used rather than reconstructing uniquify's names, which would have to assume
+  a particular `uniquify-buffer-name-style'."
+    (let ((cache (make-hash-table :test #'equal))
+          (groups nil))
+      (dolist (e entries)
+        (let* ((project (my/desktop--project-of (cdr e) cache))
+               (cell (assoc project groups)))
+          (unless cell
+            (setq cell (list project))
+            (push cell groups))
+          (setcdr cell (cons (car e) (cdr cell)))))
+      (setq groups (nreverse groups))
+      (dolist (g groups) (setcdr g (nreverse (cdr g))))
+      (append (seq-remove (lambda (g) (null (car g))) groups)
+              (seq-filter (lambda (g) (null (car g))) groups))))
+
+  (defun my/desktop--summary (file)
+    "Summarize desktop snapshot FILE as a plist.
+  Keys are :time, :buffers, :projects and :groups.  The buffer forms are read,
+  not evaluated, so summarizing a snapshot has no side effects."
+    (let ((entries nil))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (while (re-search-forward
+                "^(desktop-\\(?:create-buffer\\|append-buffer-args\\) " nil t)
+          (ignore-errors
+            (read (current-buffer))                  ; file format version
+            (let* ((visited (read (current-buffer))) ; visited file, or nil
+                   (name (read (current-buffer))))   ; buffer name
+              (push (cons (if (stringp name) name "?")
+                          (and (stringp visited) visited))
+                    entries)))))
+      (setq entries (nreverse entries))
+      (let ((groups (my/desktop--group-entries entries)))
+        (list :time (file-attribute-modification-time (file-attributes file))
+              :buffers (length entries)
+              :projects (length (seq-remove (lambda (g) (null (car g))) groups))
+              :groups groups))))
+
+  (defun my/desktop--relative-age (time)
+    "TIME as a short age, e.g. \"3h ago\"."
+    (let ((s (float-time (time-subtract nil time))))
+      (cond ((< s 60) "just now")
+            ((< s 3600) (format "%dm ago" (round (/ s 60))))
+            ((< s 86400) (format "%dh ago" (round (/ s 3600))))
+            (t (format "%dd ago" (round (/ s 86400)))))))
+
+  (defun my/desktop--label (summary)
+    "Completion candidate for SUMMARY."
+    (format "%s  (%s)"
+            (format-time-string "%Y-%m-%d %H:%M:%S" (plist-get summary :time))
+            (my/desktop--relative-age (plist-get summary :time))))
+
+  (defun my/desktop--annotation (summary)
+    "Annotation describing the contents of SUMMARY.
+  Buffers are listed grouped by project, as
+  \"proj1: file1, file2; proj2: file3; file4\", truncated to
+  `my/desktop-annotation-max-names' names."
+    (let ((budget my/desktop-annotation-max-names)
+          (buffers (plist-get summary :buffers))
+          (projects (plist-get summary :projects))
+          (parts nil)
+          (elided nil))
+      (dolist (group (plist-get summary :groups))
+        (let* ((names (cdr group))
+               (shown (seq-take names (max budget 0))))
+          (setq budget (- budget (length shown)))
+          (unless (= (length shown) (length names)) (setq elided t))
+          (when shown
+            (push (if (car group)
+                      (format "%s: %s" (car group) (string-join shown ", "))
+                    (string-join shown ", "))
+                  parts))))
+      (format "   %d buffer%s · %d project%s · %s%s"
+              buffers (if (= buffers 1) "" "s")
+              projects (if (= projects 1) "" "s")
+              (if parts (string-join (nreverse parts) "; ") "no buffers")
+              (if elided " …" ""))))
+
+  (defun my/desktop--read-snapshot ()
+    "Prompt for a desktop snapshot and return its file name."
+    (let ((files (my/desktop--snapshot-files)))
+      (unless files
+        (user-error "No desktop snapshots in %s" desktop-dirname))
+      (let* ((entries (mapcar (lambda (f)
+                                (let ((s (my/desktop--summary f)))
+                                  (list (my/desktop--label s) f s)))
+                              files))
+             (completion-extra-properties
+              (list :annotation-function
+                    (lambda (key)
+                      (let ((e (assoc key entries)))
+                        (and e (my/desktop--annotation (nth 2 e)))))))
+             (choice (completing-read "Restore desktop session: "
+                                      (mapcar #'car entries) nil t nil nil
+                                      (caar entries))))
+        (nth 1 (assoc choice entries)))))
+
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              (require 'desktop)
+              (setq desktop-dirname (expand-file-name user-emacs-directory))
+              (my/desktop--snapshot-take)
+              (desktop--get-file-modtime)
+              (let ((owner (desktop-owner)))
+                ;; Take the lock unless another live Emacs holds it; auto-saving
+                ;; is a no-op unless this process owns the desktop file.
+                (unless (and owner (desktop--emacs-pid-running-p owner))
+                  (desktop-claim-lock)))
+              (desktop-save-mode 1)))
+
+  (defun my/desktop-restore (file)
+    "Restore the desktop snapshot FILE, prompting for one interactively.
+  `desktop-read' declines to load a desktop whose lock this process already
+  holds, which is always the case here, so drop the lock first; the read
+  reclaims it."
+    (interactive (progn (require 'desktop)
+                        (list (my/desktop--read-snapshot))))
+    (desktop-release-lock)
+    (let ((desktop-base-file-name (file-name-nondirectory file)))
+      (desktop-read (file-name-directory file)))
+    ;; The read recorded the snapshot's modtime; point the bookkeeping back at
+    ;; the live file so the next save does not ask to overwrite it.
+    (desktop--get-file-modtime))
+#+end_src
+
 * Custom Libraries
 ** Koreader json to org
 #+begin_src emacs-lisp :tangle "srijan-lisp/koreader-json-to-org.el"
