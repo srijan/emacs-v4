@@ -4719,8 +4719,183 @@ One alternative can be to have a separate script to copy the required passwords 
     (setq slack-enable-global-mode-string t)
     (setq slack-buffer-function 'switch-to-buffer)
     (setq slack-thread-also-send-to-room nil)
-    (setq slack-request-curl-options (list "--user-agent" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"))
+    ;; Identify honestly as a script rather than spoofing Chrome.  Slack signed
+    ;; this account out for "suspicious activity" on 2026-08-13 while running
+    ;; with a Chrome 151 UA here: that made the session present two identities
+    ;; at once, since the websocket handshake carries no UA at all
+    ;; (`websocket-create-headers' sends only Host/Upgrade/Connection/
+    ;; Sec-WebSocket-*/cookies).  wee-slack sends "wee_slack <version>" on every
+    ;; call and has no sign-out reports in its tracker after years on Grid, so
+    ;; consistently being a script looks safer than half-convincingly being a
+    ;; browser.  If Grid starts rejecting calls on UA grounds, that is the first
+    ;; thing to revert -- test with scratchpad/ws-test.mjs before changing it.
+    (setq slack-request-curl-options (list "--user-agent" "emacs-slack"))
     ;;(setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
+
+    ;; ---- Enterprise Grid: connect without rtm.connect ----------------------
+    ;; Our org is on Slack Enterprise Grid, which blocks the rtm.connect method
+    ;; org-wide (`enterprise_is_restricted' for every token and host).  That is
+    ;; the only reason `slack-start' fails: `slack-ws-open' builds the
+    ;; wss-primary URL itself and throws away the URL rtm.connect returned, so
+    ;; the websocket layer is already Grid-compatible.  rtm.connect is called
+    ;; only by `slack-authorize', purely for self/team metadata.
+    ;;
+    ;; So: fetch that metadata from team.info + client.userBoot (both allowed on
+    ;; this Grid) and open the socket directly.  Verified 2026-08-13 that
+    ;; wss://wss-primary.slack.com/?token=<enterprise token>&gateway_server=<E-id>-1
+    ;; opens and delivers `hello'.  Reference implementation: wee-slack v3,
+    ;; slack/slack_workspace.py:376-388, which takes this path for all xoxc
+    ;; tokens and only falls back to rtm.connect for xoxp OAuth tokens.
+    ;;
+    ;; Two Grid quirks handled here:
+    ;;   - the websocket URL must carry the *enterprise* token, but
+    ;;     `slack-ws-open' builds it from `slack-team-token'
+    ;;     -> temporarily redirect that accessor while the URL is built.
+    ;;   - `conversations.list' is restricted (it is on emacs-slack's
+    ;;     team-token list in slack-request.el, and the team token is exactly
+    ;;     what this Grid rejects) -> use the userBoot-based
+    ;;     `slack-conversations-list-update-quick' instead.
+    ;; No closures anywhere below, so this stays evaluable with C-c C-c.
+
+    (defconst my/slack-team-info-url "https://slack.com/api/team.info")
+
+    (defvar my/slack-ws-token-team nil
+      "Team whose websocket URL is currently being built.
+Bound by `my/slack-ws-open-advice' so that `my/slack-team-token-advice'
+can hand out the enterprise token for just that URL.")
+
+    (defun my/slack-team-token-advice (orig-fn this)
+      "Return THIS's enterprise token while its websocket URL is built."
+      (or (and my/slack-ws-token-team
+               (eq this my/slack-ws-token-team)
+               (slack-team-enterprise-token this))
+          (funcall orig-fn this)))
+
+    (defun my/slack-ws-open-advice (orig-fn ws team &rest args)
+      "Build TEAM's websocket URL with its enterprise token."
+      (let ((my/slack-ws-token-team team))
+        (apply orig-fn ws team args)))
+
+    (defconst my/slack-ws-origin "https://wss-primary.slack.com"
+      "Origin header for the Slack websocket handshake.
+`websocket-create-headers' sends none, but python's websocket-client --
+and therefore wee-slack -- sends `Origin: https://<host>' unless asked not
+to (_handshake.py:107-111).  Matching it keeps our handshake identical to a
+non-browser Slack client with years of Enterprise Grid mileage.")
+
+    (defun my/slack-websocket-open-advice (orig-fn url &rest args)
+      "Send an Origin header when opening a Slack team websocket.
+Guarded on `my/slack-ws-token-team' so other websocket users are untouched."
+      (if my/slack-ws-token-team
+          (let ((args (copy-sequence args)))
+            (apply orig-fn url
+                   (plist-put args :custom-header-alist
+                              (cons (cons "Origin" my/slack-ws-origin)
+                                    (plist-get args :custom-header-alist)))))
+        (apply orig-fn url args)))
+
+    (cl-defun my/slack-authorize--error (team error-callback
+                                              &key error-thrown symbol-status
+                                              response data &allow-other-keys)
+      (oset team authorize-request nil)
+      (slack-log (format "Authorize Failed: %s" error-thrown) team :level 'error)
+      (when (functionp error-callback)
+        (funcall error-callback :error-thrown error-thrown
+                 :symbol-status symbol-status :response response :data data)))
+
+    (defun my/slack-authorize--emoji (team paths)
+      (oset team emoji-download-watch-timer
+            (run-with-idle-timer 5 t #'slack-team-watch-emoji-download-complete
+                                 team paths)))
+
+    (defun my/slack-authorize--on-open (team)
+      "Post-connect updates for TEAM, minus the restricted `conversations.list'."
+      (slack-conversations-list-update-quick team)
+      (slack-counts-update team)
+      (slack-dnd-status-team-info team)
+      (when slack-buffer-emojify
+        (slack-download-emoji team (apply-partially #'my/slack-authorize--emoji team)))
+      (slack-command-list-update team)
+      (slack-usergroup-list-update team)
+      (slack-update-modeline)
+      (slack-maybe-start-presence-timer team))
+
+    (cl-defun my/slack-authorize--userboot (team success-callback
+                                                 &key data &allow-other-keys)
+      "Take self info from client.userBoot DATA, then open TEAM's websocket."
+      (oset team authorize-request nil)
+      (slack-request-handle-error
+       (data "my/slack-authorize client.userBoot")
+       (let ((self (plist-get data :self)))
+         (oset team self self)
+         (oset team self-id (plist-get self :id))
+         (oset team self-name (plist-get self :name)))
+       (puthash (slack-team-id team) (slack-team-token team) slack-tokens-by-id)
+       ;; The `url' slot of `slack-team-ws' has no initform, and upstream binds
+       ;; it from rtm.connect's response.  `slack-ws-open' only reads it for a
+       ;; debug log line (slack-websocket.el:111 -- the sole reader in the
+       ;; package) and builds the real URL itself, so bind it to nil rather
+       ;; than to a URL nothing would honour.  Unbound here means an
+       ;; "Unbound slot ... url" error from inside the process sentinel.
+       (slack-team-set-ws-url team nil)
+       (slack-log "Authorization Finished (team.info + client.userBoot)" team)
+       (if success-callback
+           (funcall success-callback data)
+         (slack-team-open-ws
+          team :on-open (apply-partially #'my/slack-authorize--on-open team)))))
+
+    (cl-defun my/slack-authorize--team-info (team error-callback success-callback
+                                                  &key data &allow-other-keys)
+      "Take team id/name/domain from team.info DATA, then request userBoot.
+The id matters beyond bookkeeping: it becomes the `gateway_server'
+parameter of the websocket URL.  On an org-level token this is the E-id."
+      (slack-request-handle-error
+       (data "my/slack-authorize team.info")
+       (let ((team-data (plist-get data :team)))
+         (oset team id (plist-get team-data :id))
+         (oset team name (plist-get team-data :name))
+         (oset team domain (plist-get team-data :domain)))
+       (oset team authorize-request
+             (slack-request
+              (slack-request-create
+               slack-api-client-userboot-url
+               team
+               :type "POST"
+               :success (apply-partially #'my/slack-authorize--userboot
+                                         team success-callback)
+               :error (apply-partially #'my/slack-authorize--error
+                                       team error-callback)
+               :no-retry t)))))
+
+    (defun my/slack-authorize (team &optional error-callback success-callback)
+      "Authorize TEAM without rtm.connect, which Enterprise Grid blocks."
+      (let ((authorize-request (oref team authorize-request)))
+        (if (and authorize-request (not (request-response-done-p authorize-request)))
+            (slack-log "Authorize Already Requested" team)
+          (oset team authorize-request
+                (slack-request
+                 (slack-request-create
+                  my/slack-team-info-url
+                  team
+                  :type "POST"
+                  :success (apply-partially #'my/slack-authorize--team-info
+                                            team error-callback success-callback)
+                  :error (apply-partially #'my/slack-authorize--error
+                                          team error-callback)
+                  :no-retry t))))))
+
+    (defun my/slack-authorize-advice (orig-fn team &optional error-callback success-callback)
+      "Use the rtm.connect-free path for teams that have an enterprise token."
+      (if (slack-team-enterprise-token team)
+          (my/slack-authorize team error-callback success-callback)
+        (funcall orig-fn team error-callback success-callback)))
+
+    (advice-add 'slack-authorize :around #'my/slack-authorize-advice)
+    (advice-add 'slack-team-token :around #'my/slack-team-token-advice)
+    (advice-add 'slack-ws-open :around #'my/slack-ws-open-advice)
+    (advice-add 'websocket-open :around #'my/slack-websocket-open-advice)
+    ;; ------------------------------------------------------------------------
+
     (slack-register-team
      :name sj/employer
      :default t
