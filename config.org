@@ -1699,6 +1699,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (setopt org-clock-persist 'history)
     (setopt org-log-into-drawer t)
     (setopt org-log-done 'time)
+    (setopt org-clock-clocked-in-display 'both)
     (org-clock-persistence-insinuate)
     (defun current-clock-time-to-file ()
       (interactive)
