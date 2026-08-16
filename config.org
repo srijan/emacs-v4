@@ -5119,7 +5119,7 @@ BOUNDARY is nil or not present (no overlap), return MESSAGES unchanged."
     ;; first), so a busy channel would only replay the oldest 100 in the
     ;; window.  Page forward from the newest message of each batch until a
     ;; channel is caught up (empty batch / no forward progress) or a safety cap.
-    (defvar my/clatter-chathistory-max-age-days 3
+    (defvar my/clatter-chathistory-max-age-days 1
       "Hard floor, in days, on how far back any on-join fetch may reach.
 This is the cap for a mid-session reconnect gap-fill; it is NOT the fresh-start
 display window (see `my/clatter-startup-history-hours').")
@@ -5129,7 +5129,7 @@ On first join of a channel this session the buffer is prefilled with this
 many hours from the bouncer, regardless of what was already seen/logged before
 the last stop -- so opening clatter at 3pm shows history back to 11am, not just
 the gap since you quit.  Capped by `my/clatter-chathistory-max-age-days'.")
-    (defvar my/clatter-chathistory-max-pages 100
+    (defvar my/clatter-chathistory-max-pages 10
       "Safety cap on CHATHISTORY pages fetched per channel during gap catch-up.
 At ~100 messages per page this bounds a single channel's replay to ~10k,
 enough for a full day on all but pathologically busy channels.  Rendering
