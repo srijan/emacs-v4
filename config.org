@@ -516,7 +516,7 @@ TODO: Need to evaluate how much speedup this gives
         ;; (set-face-font 'default "Aporetic Sans Mono-17")
         ;; (set-face-font 'variable-pitch "Inter-15")
         ;; (set-face-font 'default "Berkeley Mono-15")
-        (set-face-attribute 'default nil :family "JetBrains Mono" :height 140)
+        (set-face-attribute 'default nil :family "JetBrainsMono Nerd Font" :height 140)
         ;; (set-face-attribute 'bold nil :weight 'regular)
         )
       (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
@@ -558,7 +558,7 @@ TODO: Need to evaluate how much speedup this gives
     ;; Prefer JetBrains Mono (as on macOS), fall back to Aporetic Sans Mono.
     ;; Guarded: `set-frame-font' errors if the family is not installed.
     (let ((font (seq-find (lambda (f) (find-font (font-spec :name f)))
-                          '("JetBrains Mono" "Aporetic Sans Mono"))))
+                          '("JetBrainsMono Nerd Font" "JetBrains Mono" "Aporetic Sans Mono"))))
       (when font
         (set-frame-font (format "%s-17" font) nil t)
         (add-to-list 'default-frame-alist (cons 'font (format "%s-17" font)))))
@@ -1198,8 +1198,14 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :demand t
     :config
     (timu-line-mode 1))
-  (use-package all-the-icons)
-  ;; (use-package nerd-icons)
+  (use-package all-the-icons :demand t)
+  (use-package nerd-icons
+    :demand t
+    :config
+    (when (member system-type '(gnu gnu/linux gnu/kfreebsd darwin))
+      (unless (find-font (font-spec :name "Symbols Nerd Font Mono"))
+        (nerd-icons-install-fonts t)))
+    )
   (use-package doom-modeline
     :ensure (:host github :repo "seagle0128/doom-modeline")
     :disabled
@@ -2777,9 +2783,9 @@ One alternative can be to have a separate script to copy the required passwords 
               (lambda (&rest _) (call-interactively #'sj-dashboard-visit-mindwtr)))
              ("＋" "Capture" "Capture to inbox"
               (lambda (&rest _) (call-interactively #'org-capture-inbox)))
-             ("🗓" "Agenda" "GTD agenda"
+             ("" "Agenda" "GTD agenda"
               (lambda (&rest _) (call-interactively #'mindwtr-engage)))
-             ("🔍" "Notes" "Browse notes"
+             ("󱙓" "Notes" "Browse notes"
               (lambda (&rest _) (call-interactively #'consult-notes))))))
 
     ;; Roomier tap targets on touch screens.
