@@ -5546,14 +5546,58 @@ status buffer, so this must never run `insert' inside BUF."
                (face (cond ((> unread 0) (clatter-track--face type nil))
                            (server 'shadow)
                            (t 'default))))
-          (propertize (format "  %s %s%s\n" marker name count)
-                      'face face
-                      'my/clatter-status-buffer buf
-                      'mouse-face 'highlight
-                      'help-echo (format "%d unread" unread)))))
+          ;; Keep the trailing newline UNpropertized: `mouse-face' highlights
+          ;; the maximal run sharing its value, so a propertized newline would
+          ;; fuse a whole network group into one hover region.
+          (concat (propertize (format "  %s %s%s" marker name count)
+                              'face face
+                              'my/clatter-status-buffer buf
+                              'mouse-face 'highlight
+                              'help-echo (format "%d unread" unread))
+                  "\n"))))
+
+    (defun my/clatter-status--active-channel ()
+      "The clatter buffer currently shown in the main content area, or nil."
+      (let ((w (my/clatter--content-window)))
+        (when (window-live-p w)
+          (let ((b (window-buffer w)))
+            (when (and (buffer-live-p b)
+                       (buffer-local-value 'clatter--target b))
+              b)))))
+
+    (defun my/clatter-status--goto-buffer (target)
+      "Move point to the roster line for clatter buffer TARGET.
+Return non-nil if found (leaving point on that line); nil otherwise."
+      (goto-char (point-min))
+      (let (found)
+        (while (and (not found) (not (eobp)))
+          (if (eq (get-text-property (point) 'my/clatter-status-buffer) target)
+              (setq found t)
+            (forward-line 1)))
+        found))
+
+    (defvar-local my/clatter-status--hl-overlay nil
+      "Overlay highlighting the active channel's roster line, treemacs-style.")
+
+    (defun my/clatter-status--highlight (buf)
+      "Highlight the roster line for the active channel BUF (or clear it)."
+      (when my/clatter-status--hl-overlay
+        (delete-overlay my/clatter-status--hl-overlay)
+        (setq my/clatter-status--hl-overlay nil))
+      (when (buffer-live-p buf)
+        (save-excursion
+          (when (my/clatter-status--goto-buffer buf)
+            (let ((ov (make-overlay (line-beginning-position)
+                                    (min (point-max) (1+ (line-end-position))))))
+              (overlay-put ov 'face 'hl-line)
+              (setq my/clatter-status--hl-overlay ov))))))
 
     (defun my/clatter-status-refresh (&rest _)
       "Redraw the clatter status buffer if it is live.
+Keeps the cursor on the same channel across redraws (by buffer identity, not
+raw position) and keeps a treemacs-style highlight on the active channel.
+When the sidebar is not the selected window the cursor follows the active
+channel; while you are browsing it (sidebar selected) your point is kept.
 Runs off the `clatter-track--update' advice (the message/activity path), so
 guard it: an unguarded error would propagate into whoever bumped activity."
       (interactive)
@@ -5561,10 +5605,17 @@ guard it: an unguarded error would propagate into whoever bumped activity."
           (let ((buf (get-buffer my/clatter-status-buffer-name)))
             (when (buffer-live-p buf)
               (with-current-buffer buf
-                (let ((inhibit-read-only t)
-                      (pos (point))
-                      (groups (make-hash-table :test 'equal))
-                      (order nil))
+                (let* ((inhibit-read-only t)
+                       (win (get-buffer-window buf))
+                       (sidebar-selected (and win (eq (selected-window) win)))
+                       (active (my/clatter-status--active-channel))
+                       (pos (point))
+                       (point-buf (if sidebar-selected
+                                      (get-text-property
+                                       (point) 'my/clatter-status-buffer)
+                                    active))
+                       (groups (make-hash-table :test 'equal))
+                       (order nil))
                   (erase-buffer)
                   (dolist (b (clatter-all-buffers))
                     (let ((net (buffer-local-value 'clatter--network b)))
@@ -5576,15 +5627,57 @@ guard it: an unguarded error would propagate into whoever bumped activity."
                                      #'my/clatter-status--line-less))
                       (insert (my/clatter-status--line b)))
                     (insert "\n"))
-                  (goto-char (min pos (point-max)))))))
+                  (unless (and point-buf (my/clatter-status--goto-buffer point-buf))
+                    (goto-char (min pos (point-max))))
+                  (my/clatter-status--highlight active)))))
         (error (message "[clatter] status-refresh error: %S" err))))
 
+    ;; --- treemacs-style dedicated left sidebar --------------------------
+    (defcustom my/clatter-status-width 24
+      "Width, in columns, of the docked clatter status sidebar."
+      :type 'integer :group 'clatter)
+    (defcustom my/clatter-channel-open-style 'reuse
+      "How opening a channel from the sidebar uses the main (non-side) area.
+`reuse' shows it in the single main content window (full remaining space,
+replacing the previous channel); `split' splits the main window so the new
+channel opens alongside the current one."
+      :type '(choice (const :tag "Reuse the main window (full width)" reuse)
+                     (const :tag "Split the main window" split))
+      :group 'clatter)
+
+    (defun my/clatter--content-window ()
+      "Return the widest live non-side window (the main content area), or nil.
+Side windows (the sidebar) are excluded so channels never open into it."
+      (let ((wins (seq-remove (lambda (w) (window-parameter w 'window-side))
+                              (window-list nil 'no-minibuffer))))
+        (car (sort wins (lambda (a b)
+                          (> (window-total-width a) (window-total-width b)))))))
+
+    (defun my/clatter--show-channel (buf)
+      "Display clatter BUF in the main content area per `my/clatter-channel-open-style'.
+Leaves the channel window selected, so focus lands where you type."
+      (let ((main (my/clatter--content-window)))
+        (cond
+         ((and (eq my/clatter-channel-open-style 'split) main)
+          (let ((new (with-selected-window main (split-window-sensibly))))
+            (select-window (or new main))
+            (switch-to-buffer buf)))
+         (main
+          (select-window main)
+          (switch-to-buffer buf))
+         ;; No main window yet (only the sidebar): carve one out beside it.
+         (t
+          (let ((side (get-buffer-window my/clatter-status-buffer-name)))
+            (select-window (if side (split-window side nil 'right)
+                             (selected-window)))
+            (switch-to-buffer buf))))))
+
     (defun my/clatter-status--jump ()
-      "Jump to the clatter buffer on the current line and clear its activity."
+      "Open the clatter buffer on the current line in the main area, clear activity."
       (interactive)
       (let ((buf (get-text-property (point) 'my/clatter-status-buffer)))
         (if (buffer-live-p buf)
-            (progn (pop-to-buffer buf) (clatter-clear-activity buf))
+            (progn (my/clatter--show-channel buf) (clatter-clear-activity buf))
           (message "No clatter buffer on this line"))))
 
     (defun my/clatter-status--line-unread-p (pos)
@@ -5617,6 +5710,29 @@ With prefix arg BACKWARD, move to the previous one instead."
                         (car positions)))))
             (goto-char target)))))
 
+    (defun my/clatter-status--resize (delta)
+      "Grow (DELTA>0) or shrink the docked sidebar by DELTA columns, and remember it.
+Lifts the sidebar's fixed width and released preserved size for the resize,
+then stores the result in `my/clatter-status-width' so a re-dock keeps it."
+      (let ((win (get-buffer-window my/clatter-status-buffer-name)))
+        (if (not (window-live-p win))
+            (message "Clatter sidebar is not docked")
+          (with-selected-window win
+            (let ((window-size-fixed nil))
+              (window-preserve-size win t nil)
+              (enlarge-window-horizontally delta)))
+          (setq my/clatter-status-width (window-total-width win)))))
+
+    (defun my/clatter-status-widen (&optional n)
+      "Widen the sidebar by N columns (default 1)."
+      (interactive "p")
+      (my/clatter-status--resize (or n 1)))
+
+    (defun my/clatter-status-narrow (&optional n)
+      "Narrow the sidebar by N columns (default 1)."
+      (interactive "p")
+      (my/clatter-status--resize (- (or n 1))))
+
     (defvar my/clatter-status-mode-map
       (let ((map (make-sparse-keymap)))
         (define-key map (kbd "RET") #'my/clatter-status--jump)
@@ -5624,24 +5740,56 @@ With prefix arg BACKWARD, move to the previous one instead."
         (define-key map (kbd "TAB") #'my/clatter-status-next-unread)
         (define-key map (kbd "<backtab>")
                     (lambda () (interactive) (my/clatter-status-next-unread t)))
+        (define-key map (kbd "+")   #'my/clatter-status-widen)
+        (define-key map (kbd "=")   #'my/clatter-status-widen)
+        (define-key map (kbd "-")   #'my/clatter-status-narrow)
         (define-key map (kbd "g")   #'my/clatter-status-refresh)
         map)
       "Keymap for `my/clatter-status-mode'.")
 
     (define-derived-mode my/clatter-status-mode special-mode "Clatter-Status"
       "Major mode for the persistent clatter status/roster buffer."
+      ;; Keep the sidebar a fixed width when other windows split/resize.
+      (setq-local window-size-fixed 'width)
       (setq-local revert-buffer-function
                   (lambda (&rest _) (my/clatter-status-refresh))))
 
-    (defun my/clatter-status ()
-      "Open the clatter status buffer (all networks + channels, with unread)."
-      (interactive)
+    (defun my/clatter-status--dock ()
+      "Ensure the status buffer exists and is shown as a dedicated left side
+window (treemacs-style: fixed width, skipped by `other-window', kept by
+`delete-other-windows').  Return its window."
       (let ((buf (get-buffer-create my/clatter-status-buffer-name)))
         (with-current-buffer buf
           (unless (derived-mode-p 'my/clatter-status-mode)
             (my/clatter-status-mode)))
         (my/clatter-status-refresh)
-        (pop-to-buffer buf)))
+        (let ((win (or (get-buffer-window buf)
+                       (display-buffer-in-side-window
+                        buf `((side . left) (slot . 0)
+                              (window-width . ,my/clatter-status-width)
+                              (preserve-size . (t . nil))
+                              (window-parameters
+                               . ((no-delete-other-windows . t)
+                                  (no-other-window . t))))))))
+          (when (window-live-p win)
+            (set-window-dedicated-p win t))
+          win)))
+
+    (defun my/clatter-status ()
+      "Open and focus the clatter status sidebar (dedicated left window).
+Lands the cursor on the channel you were just in, treemacs-style."
+      (interactive)
+      (let ((active (my/clatter-status--active-channel))
+            (win (my/clatter-status--dock)))
+        (when (window-live-p win)
+          (select-window win)
+          (when active (my/clatter-status--goto-buffer active)))))
+
+    (defun my/clatter-status-toggle ()
+      "Toggle the docked clatter status sidebar."
+      (interactive)
+      (let ((win (get-buffer-window my/clatter-status-buffer-name)))
+        (if (window-live-p win) (delete-window win) (my/clatter-status))))
 
     ;; Keep the roster live: clatter's track timer / activity changes call
     ;; `clatter-track--update', which now also repaints the status buffer.
