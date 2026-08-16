@@ -4996,16 +4996,13 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
     ;; (lambda (url &optional _new-window)
     ;;   (github-explorer (github-explorer-repo-from-url url))))
     )
-  (use-package remoto
-    :ensure (:host github :repo "agzam/remoto.el")
-    :demand t
-    )
 
 #+end_src
 *** Micropub / Indieweb
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package micropub
     :ensure nil
+    :demand t
     :load-path "~/workspace/srijan/micropub.el"
     :config
     (setopt micropub-me "https://srijan.ch")
