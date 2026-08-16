@@ -3255,126 +3255,145 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package eldoc
     :ensure nil
     :delight)
-    #+end_src
+#+end_src
 ** AI Assistants
 #+begin_src emacs-lisp :tangle "post-init.el"
 
-  (use-package eca
-    :ensure (:host github :repo "editor-code-assistant/eca-emacs"))
+  (when (not my-phone-p)
 
-  ;; (use-package claudemacs
-  ;;   :ensure (:host github :repo "cpoile/claudemacs")
-  ;;   :bind (
-  ;;          :map prog-mode-map
-  ;;          ("C-c C-e" . claudemacs-transient-menu)
-  ;;          :map text-mode-map
-  ;;          ("C-c C-e" . claudemacs-transient-menu)
-  ;;          )
-  ;;   :init
-  ;;   (add-to-list 'display-buffer-alist
-  ;;                '("^\\*claudemacs"
-  ;;                  (display-buffer-in-side-window)
-  ;;                  (mode-line-invisible-mode 1)
-  ;;                  (side . right)
-  ;;                  (window-width . 0.33)))
-  ;;   :config
-  ;;   (with-eval-after-load 'eat
-  ;;     (setq eat-term-scrollback-size 400000))
-  ;;   )
+    (use-package eca
+      :ensure (:host github :repo "editor-code-assistant/eca-emacs"))
 
-  (use-package inheritenv
-    :demand t
-    :ensure (:host github :repo "purcell/inheritenv"))
+    ;; (use-package claudemacs
+    ;;   :ensure (:host github :repo "cpoile/claudemacs")
+    ;;   :bind (
+    ;;          :map prog-mode-map
+    ;;          ("C-c C-e" . claudemacs-transient-menu)
+    ;;          :map text-mode-map
+    ;;          ("C-c C-e" . claudemacs-transient-menu)
+    ;;          )
+    ;;   :init
+    ;;   (add-to-list 'display-buffer-alist
+    ;;                '("^\\*claudemacs"
+    ;;                  (display-buffer-in-side-window)
+    ;;                  (mode-line-invisible-mode 1)
+    ;;                  (side . right)
+    ;;                  (window-width . 0.33)))
+    ;;   :config
+    ;;   (with-eval-after-load 'eat
+    ;;     (setq eat-term-scrollback-size 400000))
+    ;;   )
 
-  (use-package monet
-    :demand t
-    :ensure (:host github :repo "stevemolitor/monet")
-    :init
-    (setq monet-prefix-key "C-c C-m")
-    )
+    (use-package herdr
+      ;; Tracking my fork; upstream is eddof13/herdr.el (added as the
+      ;; `upstream' git remote in the elpaca source checkout).
+      :ensure (:host github :repo "srijan/herdr.el")
+      ;; Two surfaces, one key each.  C-x M is the compact transient — what
+      ;; this key did before the dispatcher existed, so the muscle memory
+      ;; still holds, and it is the one to use from inside an agent's
+      ;; terminal where a full-window buffer would pull you out of the work.
+      ;; C-c H is the dashboard.  M-x herdr also opens the dashboard.
+      :bind (("C-x M" . herdr-menu)        ; pairs with C-x m if you bind ghostel there
+             ("C-c H" . herdr-agents)
+             :map project-prefix-map
+             ("h" . herdr-project))
+      :custom (herdr-terminal-backend 'agent-windows)
+      :config (herdr-modeline-mode 1))
 
-  (use-package claude-code
-    :demand t
-    :ensure (:host github :repo "stevemolitor/claude-code.el"
-                   :files ("*.el" (:exclude "images/*")))
-    :bind-keymap
-    ("C-c C-e" . claude-code-command-map) ;; or your preferred key
-    ;; Optionally define a repeat map so that "M" will cycle thru Claude auto-accept/plan/confirm modes after invoking claude-code-cycle-mode / C-c M.
-    :bind
-    (:repeat-map my-claude-code-map ("M" . claude-code-cycle-mode))
-    :config
-    ;; optional IDE integration with Monet
-    (add-hook 'claude-code-process-environment-functions #'monet-start-server-function)
-    (monet-mode 1)
-    (setq claude-code-terminal-backend 'ghostel)
+    (use-package inheritenv
+      :demand t
+      :ensure (:host github :repo "purcell/inheritenv"))
 
-    (claude-code-mode))
+    (use-package monet
+      :demand t
+      :ensure (:host github :repo "stevemolitor/monet")
+      :init
+      (setq monet-prefix-key "C-c C-m")
+      )
 
-  (use-package claude-code-ide
-    :demand t
-    :ensure (:host github :repo "manzaltu/claude-code-ide.el")
-    :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
-    :custom
-    (claude-code-ide-terminal-backend 'ghostel)
-    (claude-code-ide-use-ide-diff nil)
-    :config
-    (claude-code-ide-emacs-tools-setup))
+    (use-package claude-code
+      :demand t
+      :ensure (:host github :repo "stevemolitor/claude-code.el"
+                     :files ("*.el" (:exclude "images/*")))
+      :bind-keymap
+      ("C-c C-e" . claude-code-command-map) ;; or your preferred key
+      ;; Optionally define a repeat map so that "M" will cycle thru Claude auto-accept/plan/confirm modes after invoking claude-code-cycle-mode / C-c M.
+      :bind
+      (:repeat-map my-claude-code-map ("M" . claude-code-cycle-mode))
+      :config
+      ;; optional IDE integration with Monet
+      (add-hook 'claude-code-process-environment-functions #'monet-start-server-function)
+      (monet-mode 1)
+      (setq claude-code-terminal-backend 'ghostel)
 
-  (use-package gptel
-    :if (not my-phone-p)
-    :bind
-    ("C-c g g" . (lambda () (interactive) 
-                   (switch-to-buffer (gptel "*Claude*"))))
-    ("C-c g s" . gptel-send)
-    ("C-c g m" . gptel-menu)
-    ("C-c g r" . gptel-rewrite)
-    ("C-c g t" . gptel-tools)
-    :config
-    (setq
-     gptel-track-media t
-     gptel-default-mode #'org-mode
-     ;; gptel-model 
-     gptel-backend (gptel-make-anthropic "Claude"
-                     :stream t
-                     :key gptel-api-key))
-    (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@srijan\n")
-    (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
-    (require 'gptel-plus)
-    )
-  (use-package gptel-plus
-    :ensure (:host github :repo "benthamite/gptel-plus"))
-  (use-package agent-shell
-    :ensure (:host github :repo "xenodium/agent-shell")
-    :demand t
-    :config
-    (setopt agent-shell-anthropic-authentication
-            (agent-shell-anthropic-make-authentication :login t))
-    (setopt agent-shell-openai-authentication
-            (agent-shell-openai-make-authentication :login t))
-    (setopt agent-shell-session-restore-verbosity 'full)
-    )
-  (use-package agent-shell-dashboard
-    :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
-    :after agent-shell
-    :commands (agent-shell-dashboard))
+      (claude-code-mode))
+
+    (use-package claude-code-ide
+      :demand t
+      :ensure (:host github :repo "manzaltu/claude-code-ide.el")
+      :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
+      :custom
+      (claude-code-ide-terminal-backend 'ghostel)
+      (claude-code-ide-use-ide-diff nil)
+      :config
+      (claude-code-ide-emacs-tools-setup))
+
+    (use-package gptel
+      :if (not my-phone-p)
+      :bind
+      ("C-c g g" . (lambda () (interactive) 
+                     (switch-to-buffer (gptel "*Claude*"))))
+      ("C-c g s" . gptel-send)
+      ("C-c g m" . gptel-menu)
+      ("C-c g r" . gptel-rewrite)
+      ("C-c g t" . gptel-tools)
+      :config
+      (setq
+       gptel-track-media t
+       gptel-default-mode #'org-mode
+       ;; gptel-model 
+       gptel-backend (gptel-make-anthropic "Claude"
+                       :stream t
+                       :key gptel-api-key))
+      (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@srijan\n")
+      (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
+      (require 'gptel-plus)
+      )
+    (use-package gptel-plus
+      :ensure (:host github :repo "benthamite/gptel-plus"))
+    (use-package agent-shell
+      :ensure (:host github :repo "xenodium/agent-shell")
+      :demand t
+      :config
+      (setopt agent-shell-anthropic-authentication
+              (agent-shell-anthropic-make-authentication :login t))
+      (setopt agent-shell-openai-authentication
+              (agent-shell-openai-make-authentication :login t))
+      (setopt agent-shell-session-restore-verbosity 'full)
+      )
+    (use-package agent-shell-dashboard
+      :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
+      :after agent-shell
+      :commands (agent-shell-dashboard))
 
 
-  (use-package eai-tool-library
-    :if (not my-phone-p)
-    :disabled
-    :ensure (:host github :repo "aard-fi/eai-tool-library")
-    :demand t
-    :init
-    (setq eai-tool-library-use-maybe-safe t)
-    (require 'eai-tool-library)
-    (require 'eai-doctor)
-    :config
-    ;; set this if you want to use maybe safe functions (recommended)
-    ;;(setq gptel-tool-library-use-maybe-safe t)
-    ;; set this if you also want to use unsafe functions
-    ;;(setq gptel-tool-library-use-unsafe t)
-    (dolist (module '("bbdb" "buffer" "elisp" "emacs" "gnus" "os" ))
-      (eai-tool-library-load-module module))
+    (use-package eai-tool-library
+      :if (not my-phone-p)
+      :disabled
+      :ensure (:host github :repo "aard-fi/eai-tool-library")
+      :demand t
+      :init
+      (setq eai-tool-library-use-maybe-safe t)
+      (require 'eai-tool-library)
+      (require 'eai-doctor)
+      :config
+      ;; set this if you want to use maybe safe functions (recommended)
+      ;;(setq gptel-tool-library-use-maybe-safe t)
+      ;; set this if you also want to use unsafe functions
+      ;;(setq gptel-tool-library-use-unsafe t)
+      (dolist (module '("bbdb" "buffer" "elisp" "emacs" "gnus" "os" ))
+        (eai-tool-library-load-module module))
+      )
     )
 
 #+end_src
