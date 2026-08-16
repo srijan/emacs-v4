@@ -17,6 +17,9 @@ eln-cache/
 
 # Runtime/session state
 ..emacs.d-tabspaces-session.el
+# desktop.el: the live file, its lock, and the .YYYYMMDDThhmmss snapshots
+.emacs.desktop
+.emacs.desktop.*
 
 # mindwtr sync state and local data (real file lives in Sync/docs/org/)
 mindwtr/
