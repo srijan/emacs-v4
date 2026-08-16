@@ -1327,7 +1327,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
                                             notmuch-hello-mode notmuch-search-mode
                                             notmuch-show-mode notmuch-tree-mode
                                             notmuch-message-mode)))
-           "Email")
+            "Email")
            ((or (string-prefix-p "*elfeed" bname)
                 (memq mode '(elfeed-search-mode elfeed-show-mode)))
             "Feeds")
@@ -1408,8 +1408,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 
     (defun my/tabspaces-ensure-workspace-scratch (tab-name)
       "Get or create *scratch-TAB-NAME* and register it in the current tab.
-If the buffer already exists (e.g. from a prior session), it is simply
-linked to the workspace without re-initialising its contents."
+  If the buffer already exists (e.g. from a prior session), it is simply
+  linked to the workspace without re-initialising its contents."
       (let* ((buf-name (format "*scratch-%s*" tab-name))
              (buf (get-buffer-create buf-name)))
         (with-current-buffer buf
@@ -2123,7 +2123,7 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-to-cal-mode 1)
     )
 
-    #+end_src
+#+end_src
 
 ** COMMENT Org and gtd (custom)
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -3905,9 +3905,9 @@ One alternative can be to have a separate script to copy the required passwords 
     :ensure nil
     :config
     (mailcap-add-mailcap-entry "text" "html"
-      '((viewer . "open %s")
-        (nametemplate . "%s.html")
-        (type . "text/html"))))
+                               '((viewer . "open %s")
+                                 (nametemplate . "%s.html")
+                                 (type . "text/html"))))
 
   (use-package notmuch
     :if (not my-phone-p)
@@ -3971,7 +3971,7 @@ One alternative can be to have a separate script to copy the required passwords 
 
     (defun my/notmuch-strip-and-tag (new-tag current-tags)
       "Tag ops: add NEW-TAG (if non-nil), strip all tags except keepers from CURRENT-TAGS.
-  Skips tags that would produce invalid ops (spaces, empty strings)."
+    Skips tags that would produce invalid ops (spaces, empty strings)."
       (let ((removals (seq-filter
                        (lambda (op) (string-match-p "^[-+]\\S-+$" op))
                        (mapcar (lambda (tag) (concat "-" tag))
@@ -4038,17 +4038,17 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; what makes captured mail reachable from the phone.
     (defun my/gmail-search-url (message-id &optional email)
       "Build a Gmail search URL for MESSAGE-ID.
-Optional EMAIL selects the account via `authuser'; an address is used
-rather than Gmail's /u/N/ index because N is assigned per browser by
-sign-in order, so the same index means different accounts on different
-devices.
+  Optional EMAIL selects the account via `authuser'; an address is used
+  rather than Gmail's /u/N/ index because N is assigned per browser by
+  sign-in order, so the same index means different accounts on different
+  devices.
 
-`ui=2' forces Gmail's desktop interface.  Gmail's mobile web UI is a
-separate application with no fragment routing, so a bare `#search/'
-link silently lands on the inbox on a phone.
+  `ui=2' forces Gmail's desktop interface.  Gmail's mobile web UI is a
+  separate application with no fragment routing, so a bare `#search/'
+  link silently lands on the inbox on a phone.
 
-MESSAGE-ID is percent-encoded: message-ids routinely contain `+', `/'
-and `=', which would otherwise corrupt the fragment."
+  MESSAGE-ID is percent-encoded: message-ids routinely contain `+', `/'
+  and `=', which would otherwise corrupt the fragment."
       (concat "https://mail.google.com/mail/?"
               (string-join (append (when email
                                      (list (format "authuser=%s"
@@ -4061,14 +4061,14 @@ and `=', which would otherwise corrupt the fragment."
       `((,sj/employer . ,sj/mail-work)
         ("srijan" . ,sj/mail-personal))
       "Map a folder under ~/Maildir to the account that receives its mail.
-Keyed on the same folder names `notmuch-poll-script' syncs with gmi.")
+  Keyed on the same folder names `notmuch-poll-script' syncs with gmi.")
 
     (defun my/notmuch-message-account ()
       "Account address for the message at point, or nil if unrecognised.
-Derived from the maildir the message landed in.  Headers cannot be used:
-notmuch's JSON exposes only Date, From, Subject and To, so
-`Delivered-To' is never available to `notmuch-show-get-header', and `To'
-may name a list or another recipient rather than us."
+  Derived from the maildir the message landed in.  Headers cannot be used:
+  notmuch's JSON exposes only Date, From, Subject and To, so
+  `Delivered-To' is never available to `notmuch-show-get-header', and `To'
+  may name a list or another recipient rather than us."
       (let ((file (notmuch-show-get-filename)))
         (when (and file (string-match "/Maildir/\\([^/]+\\)/" file))
           (cdr (assoc (match-string 1 file) my/notmuch-maildir-accounts)))))
@@ -4081,21 +4081,21 @@ may name a list or another recipient rather than us."
 
     (defun my/notmuch-capture-annotation ()
       "Describe the mail message at point, or \"\" outside notmuch.
-Prose first, then the machine-readable msgid, then the links -- so the
-useful part is legible at a glance in Orgzly, Orgro and the mindwtr app,
-none of which can follow the `notmuch:' link.
+  Prose first, then the machine-readable msgid, then the links -- so the
+  useful part is legible at a glance in Orgzly, Orgro and the mindwtr app,
+  none of which can follow the `notmuch:' link.
 
-The `rfc822msgid:' line is the fallback for those readers: the entire
-line is a valid Gmail search, so selecting it and pasting into the
-search box finds the message on any device.  Hence no space after that
-colon, unlike the human-readable fields above it.
+  The `rfc822msgid:' line is the fallback for those readers: the entire
+  line is a valid Gmail search, so selecting it and pasting into the
+  search box finds the message on any device.  Hence no space after that
+  colon, unlike the human-readable fields above it.
 
-Needs no `%' quoting: org-capture inserts a placeholder's replacement
-verbatim and does not rescan it, unlike text spliced into a template.
-There is in fact no correct quoting to apply -- `%%' is not an
-org-capture escape (it survives literally, and still fails to shield a
-following placeholder character), and `\\%' leaves a stray backslash
-wherever the `%' was harmless."
+  Needs no `%' quoting: org-capture inserts a placeholder's replacement
+  verbatim and does not rescan it, unlike text spliced into a template.
+  There is in fact no correct quoting to apply -- `%%' is not an
+  org-capture escape (it survives literally, and still fails to shield a
+  following placeholder character), and `\\%' leaves a stray backslash
+  wherever the `%' was harmless."
       (if (not (derived-mode-p 'notmuch-show-mode))
           ""
         (let* ((msgid (notmuch-show-get-message-id t))
@@ -4126,12 +4126,12 @@ wherever the `%' was harmless."
     :config
     (defun my/org-notmuch-store-gmail-link (result)
       "Rewrite a stored notmuch link to its portable Gmail URL.
-Advice on `org-notmuch-store-link', which stores `notmuch:id:...'.
-That only resolves inside this Emacs, so every capture made from mail
-was dead on the phone.  The subject/from description ol-notmuch builds
-is kept as-is; only the target changes.  Falls through untouched when
-no Gmail URL can be derived, so notmuch-tree buffers and non-Gmail
-accounts keep the original link."
+  Advice on `org-notmuch-store-link', which stores `notmuch:id:...'.
+  That only resolves inside this Emacs, so every capture made from mail
+  was dead on the phone.  The subject/from description ol-notmuch builds
+  is kept as-is; only the target changes.  Falls through untouched when
+  no Gmail URL can be derived, so notmuch-tree buffers and non-Gmail
+  accounts keep the original link."
       (let ((url (and result (my/notmuch-message-gmail-url))))
         (if (not url)
             result
@@ -4143,11 +4143,11 @@ accounts keep the original link."
 
     (defun my/org-store-link-mail-annotation (link)
       "Expand LINK into a full mail description when storing from notmuch.
-LINK is the return value of `org-store-link', which `org-capture' uses
-verbatim as the `%a' annotation, so a bare `%a' in any template yields
-the whole block with no template changes.  Outside mail LINK is returned
-untouched, and `org-stored-links' is never modified either way, so
-`C-c C-l' still inserts a plain one-line link."
+  LINK is the return value of `org-store-link', which `org-capture' uses
+  verbatim as the `%a' annotation, so a bare `%a' in any template yields
+  the whole block with no template changes.  Outside mail LINK is returned
+  untouched, and `org-stored-links' is never modified either way, so
+  `C-c C-l' still inserts a plain one-line link."
       (if (and (stringp link) (derived-mode-p 'notmuch-show-mode))
           (my/notmuch-capture-annotation)
         link))
@@ -4364,7 +4364,7 @@ untouched, and `org-stored-links' is never modified either way, so
       (add-to-list 'embark-keymap-alist '(jira-key . embark-jira-key-map)))
     )
 
-    #+end_src
+#+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
@@ -4516,7 +4516,7 @@ untouched, and `org-stored-links' is never modified either way, so
 
   (defun sj-eww-linkding-bookmark (&optional refresh-tags)
     "Save current EWW page to Linkding, with tag completion.
-With prefix arg, refresh the tag cache first."
+  With prefix arg, refresh the tag cache first."
     (interactive "P")
     (unless (derived-mode-p 'eww-mode)
       (user-error "Not in an EWW buffer"))
