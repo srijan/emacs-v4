@@ -299,6 +299,12 @@ TODO: Need to evaluate how much speedup this gives
       :ensure t
       :demand t
       :config
+      ;; emacs-plus injects the shell PATH at launch (EMACS_PLUS_PATH via
+      ;; site-start.el), so PATH/MANPATH are already correct; only the extra
+      ;; env vars still need to be copied from the shell.
+      (when (bound-and-true-p ns-emacs-plus-injected-path)
+        (setq exec-path-from-shell-variables
+              (seq-difference exec-path-from-shell-variables '("PATH" "MANPATH"))))
       (add-to-list 'exec-path-from-shell-variables "ANTHROPIC_API_KEY")
       (add-to-list 'exec-path-from-shell-variables "TODOIST_TOKEN")
       (exec-path-from-shell-initialize))
