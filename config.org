@@ -3574,6 +3574,14 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package dockerfile-mode)
   (use-package yaml-mode)
   (use-package kubernetes
+    ;; Personal fork.  Carries fixes not yet upstream: nodes render on k8s
+    ;; >= 1.32 (whose `nodeInfo.swap' is an object, which tripped
+    ;; `key-value's stringp assertion), the vterm exec backend actually runs
+    ;; kubectl, there is a ghostel exec backend on "g", the events and exec
+    ;; transients are autoloaded, and section folds survive a redraw.  See
+    ;; https://github.com/srijan/kubernetes-el -- drop the :ensure if these
+    ;; land in kubernetes-el/kubernetes-el.
+    :ensure (:host github :repo "srijan/kubernetes-el")
     :commands (kubernetes-overview)
     ;; :custom runs at init -- unlike :config, which use-package keys on
     ;; `eval-after-load 'kubernetes' and which therefore never fires, because
@@ -3581,12 +3589,11 @@ One alternative can be to have a separate script to copy the required passwords 
     ;; (provides `kubernetes-overview'), never kubernetes.el.
     :custom
     (kubernetes-poll-frequency 3600)
-    (kubernetes-redraw-frequency 3600)
-    :init
-    ;; `kubernetes-dispatch' ("?") and the "T" key reference the
-    ;; `kubernetes-events' transient, but only kubernetes.el requires
-    ;; kubernetes-events and the prefix carries no autoload cookie.
-    (with-eval-after-load 'kubernetes-overview (require 'kubernetes-events)))
+    ;; Redraw is a cheap local repaint, not a kubectl call, so it stays short.
+    ;; It is also the only recovery path: `kubernetes--redraw-overview-buffer'
+    ;; silently skips whenever the overview window is not selected, so a long
+    ;; interval leaves the buffer stuck on "Fetching..." after the first poll.
+    (kubernetes-redraw-frequency 5))
 #+end_src
 ** COMMENT mu4e
 #+begin_src emacs-lisp :tangle "post-init.el"
