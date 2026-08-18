@@ -2899,6 +2899,26 @@ One alternative can be to have a separate script to copy the required passwords 
     (setopt howm-history-file (sj/sync "docs/notes/.howm-history"))
 
     :config
+    (require 'denote)
+
+    (defun my/howm-denote-file-name (title)
+      "Return a howm-relative Denote file name for TITLE."
+      (let* ((dir (file-name-as-directory
+                   (expand-file-name "howm" howm-directory)))
+             (identifier (funcall denote-get-identifier-function nil (current-time)))
+             (path (denote-format-file-name dir identifier nil title ".org" nil)))
+        (file-relative-name path howm-directory)))
+
+    (defun my/howm-create-with-denote-file-name (orig title &rest args)
+      "Call ORIG with `howm-file-name-format' bound to a Denote-style name."
+      (let ((howm-file-name-format
+             (replace-regexp-in-string
+              "%" "%%" (my/howm-denote-file-name title) t t)))
+        (apply orig title args)))
+
+    (advice-add 'howm-create-file-with-title :around
+                #'my/howm-create-with-denote-file-name)
+
     ;; Don't extend howm-mode to howm's own state files: .howm-keys and
     ;; .howm-history live inside the notes dir (for mobile sync), and
     ;; howm-mode on the history buffer makes every search's history write
