@@ -417,7 +417,7 @@ TODO: Need to evaluate how much speedup this gives
     (interactive)
     (select-frame (make-frame))
     (switch-to-buffer "*scratch*"))
-  (global-set-key (kbd "M-n") 'new-frame)
+  (global-set-key (kbd "s-n") 'new-frame)
 
   (setq save-interprogram-paste-before-kill t)
 
