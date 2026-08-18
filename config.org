@@ -318,12 +318,17 @@ TODO: Need to evaluate how much speedup this gives
       :demand t
       :ensure (:host codeberg :repo "ctietze/quake-frame.el")
       :custom
-      (quake-frame-height 0.6)
-      (quake-frame-position 'top)
-      (quake-frame-offset-y 0)
+      (quake-frame-height 0.4)
+      (quake-frame-width 0.5)
+      (quake-frame-position 'center)
+      (quake-frame-offset-x -0.08)
+      (quake-frame-offset-y -0.05)
       (quake-frame-frame-parameters
        '((z-group . above)
-         (alpha-background . 85)))
+         (ns-alpha-elements . (ns-alpha-all))
+         (ns-background-blur . 10)
+         (alpha-background . 0.4)
+         ))
       )
     )
 #+end_src
