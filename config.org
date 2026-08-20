@@ -2732,6 +2732,7 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package dashboard
     :ensure (:host github :repo "emacs-dashboard/dashboard")
     :demand t
+    :disabled
     :custom
     ;; No agenda section: a full `org-map-entries' scan of the agenda files
     ;; costs ~1s at every startup.  Today's agenda is one tap away instead
@@ -2806,13 +2807,13 @@ One alternative can be to have a separate script to copy the required passwords 
   ;; :config) and guarded, because Elpaca installs asynchronously: on a very
   ;; first run dashboard may not be built yet, and an erroring
   ;; `initial-buffer-choice' would break startup.
-  (setq initial-buffer-choice
-        (lambda ()
-          (if (fboundp 'dashboard-open)
-              (or (ignore-errors (dashboard-open))
-                  (get-buffer "*dashboard*")
-                  (get-buffer-create "*scratch*"))
-            (get-buffer-create "*scratch*"))))
+  ;; (setq initial-buffer-choice
+  ;;       (lambda ()
+  ;;         (if (fboundp 'dashboard-open)
+  ;;             (or (ignore-errors (dashboard-open))
+  ;;                 (get-buffer "*dashboard*")
+  ;;                 (get-buffer-create "*scratch*"))
+  ;;           (get-buffer-create "*scratch*"))))
 
 #+end_src
 ** Popup frames
