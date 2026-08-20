@@ -3432,6 +3432,15 @@ One alternative can be to have a separate script to copy the required passwords 
                            (t "git"))))
   (use-package forge
     :after magit)
+  (use-package diff-hl
+    :commands (diff-hl-mode
+               global-diff-hl-mode)
+    :hook (prog-mode . diff-hl-mode)
+    :init
+    (setq diff-hl-flydiff-delay 0.4)
+    (setq diff-hl-show-staged-changes nil)
+    (setq diff-hl-update-async t)
+    (setq diff-hl-global-modes '(not pdf-view-mode image-mode)))
 #+end_src
 ** Language Modes
 #+begin_src emacs-lisp :tangle "post-init.el"
