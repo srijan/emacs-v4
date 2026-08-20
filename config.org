@@ -376,6 +376,19 @@ TODO: Need to evaluate how much speedup this gives
   (setq auto-save-interval 300)
   (setq auto-save-timeout 30)
 
+  ;; buffer-guardian saves file-visiting buffers automatically on buffer,
+  ;; window, or frame switches, without waiting on auto-save-mode's
+  ;; keystroke/idle-timeout triggers.
+  (use-package buffer-guardian
+    :ensure (:host github :repo "jamescherti/buffer-guardian.el")
+    :custom
+    (buffer-guardian-inhibit-saving-remote-files t)
+    (buffer-guardian-inhibit-saving-nonexistent-files nil)
+    (buffer-guardian-save-on-same-buffer-window-change t)
+    (buffer-guardian-verbose nil)
+    :init
+    (buffer-guardian-mode 1))
+
   ;; Hide warnings and display only errors
   (setq warning-minimum-level :error)
 
