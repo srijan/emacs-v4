@@ -1019,6 +1019,27 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 
     :custom
     (outline-indent-ellipsis " ▼ "))
+
+  ;; Unified fold/unfold interface across outline, outline-indent, org,
+  ;; markdown, and other supported folding modes.
+  (use-package kirigami
+    :ensure (:host github :repo "jamescherti/kirigami.el")
+    :commands (kirigami-open-fold
+               kirigami-open-fold-rec
+               kirigami-close-fold
+               kirigami-toggle-fold
+               kirigami-open-folds
+               kirigami-close-folds-except-current
+               kirigami-close-folds)
+    :bind
+    (("C-c z o" . kirigami-open-fold)
+     ("C-c z O" . kirigami-open-fold-rec)
+     ("C-c z r" . kirigami-open-folds)
+     ("C-c z c" . kirigami-close-fold)
+     ("C-c z m" . kirigami-close-folds)
+     ("C-c z a" . kirigami-toggle-fold))
+    :init
+    (kirigami-global-mode 1))
 #+end_src
 ** Enhanced undo/redo
 #+begin_src emacs-lisp :tangle "post-init.el"
