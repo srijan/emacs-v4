@@ -3366,6 +3366,7 @@ One alternative can be to have a separate script to copy the required passwords 
       )
     (use-package gptel-plus
       :ensure (:host github :repo "benthamite/gptel-plus"))
+
     (use-package agent-shell
       :ensure (:host github :repo "xenodium/agent-shell")
       :demand t
@@ -3376,6 +3377,12 @@ One alternative can be to have a separate script to copy the required passwords 
               (agent-shell-openai-make-authentication :login t))
       (setopt agent-shell-session-restore-verbosity 'full)
       )
+    (use-package agent-shell-desktop
+      :ensure (:host github :repo "timfel/agent-shell-desktop.el")
+      :demand t
+      :after (agent-shell desktop)
+      :config
+      (agent-shell-desktop-mode 1))
     (use-package agent-shell-dashboard
       :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
       :after agent-shell
