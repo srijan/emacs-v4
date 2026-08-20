@@ -3289,29 +3289,6 @@ One alternative can be to have a separate script to copy the required passwords 
 
   (when (not my-phone-p)
 
-    (use-package eca
-      :ensure (:host github :repo "editor-code-assistant/eca-emacs"))
-
-    ;; (use-package claudemacs
-    ;;   :ensure (:host github :repo "cpoile/claudemacs")
-    ;;   :bind (
-    ;;          :map prog-mode-map
-    ;;          ("C-c C-e" . claudemacs-transient-menu)
-    ;;          :map text-mode-map
-    ;;          ("C-c C-e" . claudemacs-transient-menu)
-    ;;          )
-    ;;   :init
-    ;;   (add-to-list 'display-buffer-alist
-    ;;                '("^\\*claudemacs"
-    ;;                  (display-buffer-in-side-window)
-    ;;                  (mode-line-invisible-mode 1)
-    ;;                  (side . right)
-    ;;                  (window-width . 0.33)))
-    ;;   :config
-    ;;   (with-eval-after-load 'eat
-    ;;     (setq eat-term-scrollback-size 400000))
-    ;;   )
-
     (use-package herdr
       ;; Tracking my fork; upstream is eddof13/herdr.el (added as the
       ;; `upstream' git remote in the elpaca source checkout).
