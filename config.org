@@ -5051,14 +5051,14 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
     :hook (after-init . global-emojify-mode))
   (use-package mastodon
     :if (not my-phone-p)
-    ;; :straight (:package mastodon :host nil :type git :repo "https://codeberg.org/martianh/mastodon.el.git" :branch "develop")
-    :ensure t
+    :ensure (:host codeberg :repo "martianh/mastodon.el" :branch "develop")
+    :demand t
     :config
-    (setq mastodon-instance-url "https://indieweb.social"
-          mastodon-active-user "srijan"
-          mastodon-auth-use-auth-source nil
-          mastodon-tl--highlight-current-toot t
-          )
+    (setopt mastodon-instance-url "https://indieweb.social"
+            mastodon-active-user "srijan"
+            mastodon-tl--highlight-current-toot t
+            mastodon-auth-use-auth-source t
+            mastodon-tl-use-nerd-icons t)
 
     ;; Fediverse URLs span arbitrary domains, so a predicate matcher is
     ;; needed instead of regexes.  On lookup failure mastodon.el calls
