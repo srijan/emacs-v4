@@ -4551,20 +4551,48 @@ One alternative can be to have a separate script to copy the required passwords 
                                        rx-patterns)
                                handler))
 
+  (defun sj-browse-url--handler (url)
+    "Return the handler in `sj-browse-url-handlers' matching URL, else nil."
+    (cl-loop for (_key matcher . func) in sj-browse-url-handlers
+             when (if (functionp matcher)
+                      (funcall matcher url)
+                    (cl-some (lambda (regex) (string-match-p regex url))
+                             matcher))
+             return func))
+
   (defun sj-browse-url (url &optional new-window)
     "Browse URL using configured handlers or default handler."
     (interactive (browse-url-interactive-arg "URL: "))
-    (let ((handler (or (cl-loop for (key matcher . func) in sj-browse-url-handlers
-                                when (if (functionp matcher)
-                                         (funcall matcher url)
-                                       (cl-some (lambda (regex)
-                                                  (string-match-p regex url))
-                                                matcher))
-                                return func)
-                       sj-browse-url-default-handler)))
-      (funcall handler url new-window)))
+    (funcall (or (sj-browse-url--handler url)
+                 sj-browse-url-default-handler)
+             url new-window))
 
   (setopt browse-url-browser-function 'sj-browse-url)
+
+  ;; `eww-follow-link' never reaches `browse-url' for ordinary links: it
+  ;; renders them in eww itself, and only defers to `browse-url' when the
+  ;; URL matches `eww-use-browse-url' (default: mailto: only).  So RET on
+  ;; e.g. a reddit link inside an eww buffer bypasses the dispatcher
+  ;; entirely and no handler fires -- unlike elfeed/org, which call
+  ;; `browse-url' and so honour `browse-url-browser-function'.
+  ;;
+  ;; Widening `eww-use-browse-url' would work but costs too much: that
+  ;; branch sits *above* the prefix-arg branch in `eww-follow-link', so
+  ;; C-u (external browser) and C-u C-u (new buffer) would stop working
+  ;; on exactly the URLs we care about, and it can't express predicate
+  ;; matchers like `mastodon' at all.  Divert here instead, only when a
+  ;; handler matches and no prefix argument was given, leaving eww's
+  ;; prefix-arg, same-page #anchor and history branches untouched.
+  (define-advice eww-follow-link (:around (fn &optional external mouse-event) sj-browse-url)
+    "Route links with a `sj-browse-url' handler through that handler."
+    (if external
+        (funcall fn external mouse-event)
+      (mouse-set-point mouse-event)
+      (let* ((url (eww--transform-url (get-text-property (point) 'shr-url)))
+             (handler (and url (sj-browse-url--handler url))))
+        (if handler
+            (funcall handler url nil)
+          (funcall fn external mouse-event)))))
 #+end_src
 *** Linkding
 #+begin_src emacs-lisp :tangle "post-init.el"
