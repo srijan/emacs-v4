@@ -1975,6 +1975,150 @@ One alternative can be to have a separate script to copy the required passwords 
     :config (org-hide-drawers-mode 1))
 
 #+end_src
+** Project blackboard
+Per-project =.blackboard/todo.org=, the directory untracked via the global
+gitignore so attachments (=.blackboard/data/=, org-attach's default next to
+the file) and the archive stay inside it.  Shared between me and LLM
+agents.  Tasks only, one top-level entry each, newest first, each with an
+=ID= and =CREATED= property; state is an org keyword (TODO, INPROGRESS,
+SOMEDAY, DONE) and org logs the changes (=CLOSED=, =LOGBOOK=), so agents
+change state through =org-todo= via emacsclient rather than by editing.  Agents edit
+the file directly; =global-auto-revert-mode= picks their edits up.  See
+https://martinfowler.com/articles/exploring-gen-ai/an-accidental-blackboard.html
+The agent-side protocol lives in =~/.claude/CLAUDE.md=.
+#+begin_src emacs-lisp :tangle "post-init.el"
+
+  (defvar my/project-blackboard-file ".blackboard/todo.org"
+    "Per-project blackboard task file, relative to the project root.")
+
+  (defun my/project-blackboard--main-root (root)
+    "Return the main worktree's root for ROOT, or ROOT itself.
+  Linked git worktrees (herdr puts PR branches in their own directories)
+  share the main checkout's blackboard instead of each getting one that
+  dies with the worktree."
+    (let* ((default-directory root)
+           (common (ignore-errors
+                     (car (process-lines "git" "rev-parse" "--path-format=absolute"
+                                         "--git-common-dir")))))
+      (if (and common (string-suffix-p "/.git" (directory-file-name common)))
+          (file-name-as-directory
+           (file-name-directory (directory-file-name common)))
+        root)))
+
+  (defun my/project-blackboard-path (&optional root)
+    "Return the absolute path of ROOT's (default: current project's) blackboard.
+  Worktrees resolve to the main checkout, see `my/project-blackboard--main-root'."
+    (expand-file-name my/project-blackboard-file
+                      (my/project-blackboard--main-root
+                       (or root
+                           (project-root (or (project-current)
+                                             (user-error "Not in a project")))))))
+
+  (defun my/project-blackboard--ensure-header ()
+    "Insert the blackboard header in the current buffer when missing."
+    (save-excursion
+      (goto-char (point-min))
+      (unless (re-search-forward "^#\\+TODO:" nil t)
+        (insert "#+ARCHIVE: %s_archive::datetree/\n"
+                "#+TODO: TODO(t) INPROGRESS(i!) SOMEDAY(s!) | DONE(d!)\n"
+                "#+STARTUP: logdone\n\n")
+        (when (derived-mode-p 'org-mode) (org-set-regexps-and-options)))))
+
+  (defun my/project-blackboard-capture-target ()
+    "Select the current project's blackboard, creating its header if missing.
+  Point is left at `point-min', off any heading, so `:prepend' in the
+  capture template inserts the new top-level entry before the first one.
+  TODO = backlog, INPROGRESS = being worked on, SOMEDAY = maybe later;
+  the keywords are declared per file so agents can read them, and the
+  `!' markers log state changes into the LOGBOOK drawer."
+    (let ((path (my/project-blackboard-path)))
+      (make-directory (file-name-directory path) t)
+      (set-buffer (org-capture-target-buffer path)))
+    (my/project-blackboard--ensure-header)
+    (goto-char (point-min)))
+
+  (with-eval-after-load 'org-capture
+    (require 'org-id)                    ; %(org-id-new) in the template
+    (add-to-list 'org-capture-templates
+                 '("p" "Project blackboard" entry
+                   (function my/project-blackboard-capture-target)
+                   "* TODO %?\n:PROPERTIES:\n:ID: %(org-id-new)\n:CREATED: %U\n:END:\n%a"
+                   :prepend t :empty-lines 1)))
+
+  (defun my/project-blackboard-capture ()
+    "Capture a TODO into the current project's blackboard."
+    (interactive)
+    (org-capture nil "p"))
+
+  (defun my/project-blackboard-open ()
+    "Open the current project's blackboard."
+    (interactive)
+    (find-file (my/project-blackboard-path)))
+
+  (defun my/project-blackboard-archive-done ()
+    "Archive every DONE entry in the current project's blackboard."
+    (interactive)
+    (require 'org-archive)               ; org-archive-all-done is not autoloaded
+    (with-current-buffer (find-file-noselect (my/project-blackboard-path))
+      (org-archive-all-done)
+      (save-buffer)))
+
+  (defun my/project-blackboard-agenda ()
+    "Show a TODO list for the current project's blackboard only.
+  Blackboards are deliberately not in `org-agenda-files'."
+    (interactive)
+    (let ((org-agenda-files (list (my/project-blackboard-path))))
+      (org-todo-list)))
+
+  (defun my/project-blackboard-refile (&optional root)
+    "Move the org entry at point to the top of a project's blackboard.
+  Prompts for the project unless ROOT is given.  The entry becomes a
+  top-level TODO (DONE stays DONE); a mindwtr MW_ID becomes its ID and
+  MW_CREATED its CREATED, every other MW_ property is dropped."
+    (interactive)
+    (unless (derived-mode-p 'org-mode) (user-error "Not in an org buffer"))
+    (org-back-to-heading t)
+    (let* ((root (or root (project-prompt-project-dir)))
+           (path (my/project-blackboard-path root))
+           (state (org-get-todo-state))
+           (done (member state org-done-keywords))
+           (title (org-get-heading t t t t)))
+      (org-copy-subtree nil 'cut)
+      (save-buffer)
+      (make-directory (file-name-directory path) t)
+      (with-current-buffer (find-file-noselect path)
+        (my/project-blackboard--ensure-header)
+        (goto-char (point-min))
+        (unless (org-at-heading-p) (outline-next-heading))
+        (unless (bolp) (insert "\n"))
+        (org-paste-subtree 1)
+        (org-back-to-heading t)
+        (org-edit-headline title)
+        (org-todo (if done "DONE" "TODO"))
+        (when-let* ((id (org-entry-get nil "MW_ID")))
+          (org-entry-put nil "ID" id))
+        (org-entry-put nil "CREATED"
+                       (or (org-entry-get nil "MW_CREATED")
+                           (format-time-string "[%Y-%m-%d %a %H:%M]")))
+        (dolist (prop (org-entry-properties nil 'standard))
+          (when (string-prefix-p "MW_" (car prop))
+            (org-entry-delete nil (car prop))))
+        (org-id-get-create)
+        (save-buffer)
+        (message "Refiled to %s" (abbreviate-file-name path)))))
+
+  (with-eval-after-load 'org
+    ;; Shifted C-c C-w: cross-file next to org-refile.  GUI only; a tty
+    ;; cannot tell C-S-w from C-w.
+    (keymap-set org-mode-map "C-c C-S-w" #'my/project-blackboard-refile))
+
+  (with-eval-after-load 'project
+    (keymap-set project-prefix-map "t" #'my/project-blackboard-capture)
+    (keymap-set project-prefix-map "T" #'my/project-blackboard-open)
+    (add-to-list 'project-switch-commands '(my/project-blackboard-open "Blackboard") t))
+
+#+end_src
+
 ** COMMENT Org and gtd (org-gtd v4)
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package org
