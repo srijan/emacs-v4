@@ -4676,24 +4676,98 @@ One alternative can be to have a separate script to copy the required passwords 
     (elfeed-use-curl t)
     (elfeed-log-level 'debug)
     (elfeed-search-title-max-width 120)
+    :bind (:map elfeed-search-mode-map
+                ("G" . sj-elfeed-fever-catch-up))
     :config
     (elfeed-set-timeout 36000)
 
-    (defun elfeed-protocol-fever-sync-unread-stat (host-url)
-      "Set all entries in search view to read and fetch latest unread entries.
-  HOST-URL is the host name of Fever server with user field authentication info,
-  for example \"https://user@myhost.com\"."
+    (defun sj-elfeed-fever--host ()
+      "Return the Fever host url, prompting only when several are configured."
+      (let ((feeds (elfeed-protocol-feed-list)))
+        (elfeed-protocol-url
+         (if (cdr feeds) (completing-read "Protocol Feed: " feeds) (car feeds)))))
+
+    (defun sj-elfeed-fever--catch-up (host-url rounds total)
+      "Fetch one batch of items past the update mark for HOST-URL, then recurse.
+  ROUNDS caps the loop, TOTAL accumulates the entries fetched so far."
+      (let* ((proto-id (elfeed-protocol-fever-id host-url))
+             (since (elfeed-protocol-fever-get-update-mark proto-id 'update))
+             (url (concat (elfeed-protocol-fever--get-api-url host-url)
+                          elfeed-protocol-fever-api-items
+                          (format "&since_id=%d" since)))
+             (data (elfeed-protocol-fever--build-data host-url)))
+        (elfeed-protocol-fever-with-fetch url "POST" data
+          (let* ((items (map-elt result 'items))
+                 (n (length items)))
+            (elfeed-protocol-fever--parse-entries host-url items t 'update)
+            (let ((after (elfeed-protocol-fever-get-update-mark proto-id 'update)))
+              (if (and (> n 0) (> rounds 0) (> after since))
+                  (sj-elfeed-fever--catch-up host-url (1- rounds) (+ total n))
+                (message "elfeed fever: %d new entries" (+ total n))
+                (sj-elfeed-fever-pull-read-state host-url)))))))
+
+    (defun sj-elfeed-fever-catch-up (host-url)
+      "Fetch everything newer than the last seen id at HOST-URL, then reconcile.
+
+  `elfeed-protocol-fever-update' asks for one fixed window of
+  `elfeed-protocol-fever-maxsize' ids and stops, so a multi-day gap needs a
+  keypress per 50 entries -- and a window holding none of our ids stalls it
+  permanently, since the mark only advances to the highest id actually
+  returned.  Fever's `since_id' pages by id and skips gaps, so looping it
+  catches up in one go and cannot wedge."
+      (interactive (list (sj-elfeed-fever--host)))
+      (if (< (elfeed-protocol-fever-get-update-mark
+              (elfeed-protocol-fever-id host-url) 'update)
+             0)
+          ;; Fresh database: let upstream run its `init' pass instead.
+          (elfeed-protocol-fever-update host-url)
+        (message "elfeed fever: catching up...")
+        (elfeed-protocol-fever-fetch-prepare host-url
+          (sj-elfeed-fever--catch-up host-url 100 0))))
+
+    (defun sj-elfeed-fever-pull-read-state (host-url)
+      "Apply the Fever server's unread set at HOST-URL to the local elfeed db.
+  Entries read in the Miniflux UI get their `unread' tag cleared here, and
+  entries marked unread there get it back.  Nothing is pushed to the server.
+
+  `elfeed-protocol-fever-update' only corrects tags on entries it re-fetches,
+  and it fetches by ascending id, so read state set outside Emacs never lands
+  otherwise.  Fever returns the whole unread id set in one unpaginated
+  response, so this costs a single request regardless of backlog size."
       (interactive
-       (list (completing-read
-              "feed: "
-              (mapcar (lambda (fd)
-                        (string-trim-left (car fd) "[^+]*\\+"))
-                      elfeed-protocol-feeds))))
-      (save-mark-and-excursion
-        (mark-whole-buffer)
-        (cl-loop for entry in (elfeed-search-selected)
-                 do (elfeed-untag-1 entry 'unread))
-        (elfeed-protocol-fever--do-update host-url 'update-unread)))
+       (list (sj-elfeed-fever--host)))
+      (let* ((proto-id (elfeed-protocol-fever-id host-url))
+             (url (concat (elfeed-protocol-fever--get-api-url host-url)
+                          elfeed-protocol-fever-api-unread-item-ids))
+             (data (elfeed-protocol-fever--build-data host-url)))
+        (elfeed-protocol-fever-with-fetch url "POST" data
+          (let ((server-unread (make-hash-table :test 'eql))
+                (cleared 0)
+                (restored 0))
+            (dolist (id (split-string
+                         (format "%s" (map-elt result 'unread_item_ids)) "," t))
+              (puthash (string-to-number id) t server-unread))
+            ;; Keep this a pure pull.  `elfeed-tag-1'/`elfeed-untag-1' became
+            ;; plain aliases for `elfeed-tag'/`elfeed-untag' in elfeed 4.0.0, so
+            ;; any tag change now fires elfeed-protocol's sync hooks and would
+            ;; push our stale local state back at Miniflux.
+            (let ((elfeed-tag-hook nil)
+                  (elfeed-untag-hook nil))
+              (with-elfeed-db-visit (entry _feed)
+                (when (equal (elfeed-meta entry :protocol-id) proto-id)
+                  (let ((on-server (gethash (elfeed-meta entry :id) server-unread))
+                        (local-unread (elfeed-tagged-p 'unread entry)))
+                    (cond ((and local-unread (not on-server))
+                           (elfeed-untag entry 'unread)
+                           (cl-incf cleared))
+                          ((and on-server (not local-unread))
+                           (elfeed-tag entry 'unread)
+                           (cl-incf restored)))))))
+            (when (or (> cleared 0) (> restored 0))
+              (elfeed-db-save))
+            (elfeed-search-update :force)
+            (message "elfeed fever: %d marked read, %d marked unread"
+                     cleared restored)))))
 
     (defun sj-elfeed-hard-refresh()
       "Performs a hard-refresh of the elfeed database and fetching everything from scratch"
@@ -4719,6 +4793,9 @@ One alternative can be to have a separate script to copy the required passwords 
                            :vert-only t)
       (tool-bar-local-item "newsticker/get-all" 'elfeed-search-fetch 'elfeed-update-button tool-bar-map
                            :help "Update elfeed sources"
+                           :vert-only t)
+      (tool-bar-local-item "checked" 'sj-elfeed-fever-pull-read-state 'elfeed-pull-read-button tool-bar-map
+                           :help "Pull read state from Miniflux"
                            :vert-only t)
       (tool-bar-local-item "search" 'elfeed-search-live-filter 'elfeed-search-button tool-bar-map
                            :help "Change elfeed display filter"
