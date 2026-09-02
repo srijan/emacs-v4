@@ -5288,6 +5288,11 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
             mastodon-auth-use-auth-source t
             mastodon-tl-use-nerd-icons t)
 
+    ;; mastodon-tl.el reads `mastodon-inspect-profile-requests' on every
+    ;; request but only declares it; the defcustom lives in
+    ;; mastodon-inspect.el, which nothing requires (develop @ 9318711).
+    (require 'mastodon-inspect)
+
     ;; Fediverse URLs span arbitrary domains, so a predicate matcher is
     ;; needed instead of regexes.  On lookup failure mastodon.el calls
     ;; `browse-url' itself, which would recurse into the dispatcher and
