@@ -3071,10 +3071,15 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 *** Attachments
 #+begin_src emacs-lisp :tangle "post-init.el"
   ;; One shared org-attach pool at the notes root instead of a data/
-  ;; directory next to each note's folder.  Absolute path: the default is
-  ;; resolved relative to each org file's own directory.  Nothing outside
-  ;; the notes tree uses org-attach today, so the global setting is safe.
-  (setopt org-attach-id-dir (sj/sync "docs/notes/data/"))
+  ;; directory next to each note's folder.  Only for org files inside the
+  ;; notes tree; anything else (e.g. a project's blackboard.org) keeps the
+  ;; default data/ next to the file.
+  (defun sj/org-attach-use-notes-pool ()
+    "Use the shared notes attachment pool for org files under the notes tree."
+    (when (and buffer-file-name
+               (file-in-directory-p buffer-file-name (sj/sync "docs/notes/")))
+      (setq-local org-attach-id-dir (sj/sync "docs/notes/data/"))))
+  (add-hook 'org-mode-hook #'sj/org-attach-use-notes-pool)
 #+end_src
 *** Howm
 #+begin_src emacs-lisp :tangle "post-init.el"
