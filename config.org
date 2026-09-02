@@ -4820,8 +4820,15 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (elfeed-use-curl t)
     (elfeed-log-level 'debug)
     (elfeed-search-title-max-width 120)
+    ;; Room for "<feed title> (<tags>)"; the default 30 squeezes long feed
+    ;; names onto a second line.
+    (elfeed-search-trailing-width 64)
     :bind (:map elfeed-search-mode-map
                 ("G" . sj-elfeed-fever-catch-up))
+    :hook
+    ;; `global-visual-line-mode' undoes the `truncate-lines' that
+    ;; `elfeed-search-mode' sets, so entries wrap instead of truncating.
+    (elfeed-search-mode . (lambda () (visual-line-mode -1)))
     :config
     (elfeed-set-timeout 36000)
 
