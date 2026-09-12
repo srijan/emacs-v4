@@ -1930,14 +1930,12 @@ One alternative can be to have a separate script to copy the required passwords 
                      (function my/mindwtr-capture-template-with-link)))
       )
 
-    (with-eval-after-load 'notmuch
-
-      (defun my/mindwtr-capture-template-with-link ()
-        "Like `mindwtr-capture-template' but with the stored link appended.
+    (defun my/mindwtr-capture-template-with-link ()
+      "Like `mindwtr-capture-template' but with the stored link appended.
   For mail, `%a' expands to sender, date, subject, msgid and links -- see
   `my/org-store-link-mail-annotation'.  Nothing here is mail-specific, so
   this works as a general capture template."
-        (concat (mindwtr-capture-template) "%a\n%i\n")))
+      (concat (mindwtr-capture-template) "%a\n%i\n"))
 
     (defun org-capture-inbox () (interactive) (org-capture nil "i"))
     (defun org-capture-mail ()
