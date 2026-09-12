@@ -4791,8 +4791,84 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :ensure nil
     :commands (eww)
     :config
-    (when-let ((kagi-token (auth-source-pick-first-password :host "kagi.com" :user "token")))
-      (setq eww-search-prefix (concat "https://kagi.com/html/search?token=" kagi-token "&q=")))
+    ;; eww already has desktop.el support built in (`eww-mode' handler +
+    ;; `eww-desktop-misc-data'); it just defaults to a manual-reload
+    ;; placeholder instead of actually restoring the page.
+    (setopt eww-restore-desktop t)
+    ;; Rename each eww buffer after its page title so navigating with
+    ;; `eww-open-in-new-buffer' (M-RET) leaves distinct, identifiable
+    ;; buffers instead of a pile of "*eww*<N>"s.
+    (setopt eww-auto-rename-buffer t)
+
+    ;; `eww-desktop-misc-data' (the save side) never captures where point
+    ;; actually is on the *current* page -- `eww-data''s :point is only
+    ;; ever set by `eww-save-history', which fires on navigating away, so
+    ;; a page you're still sitting on when you quit keeps whatever :point
+    ;; it had at load time (usually 1).  Worse, its dedup step compares
+    ;; entries ignoring :point on purpose (`eww-desktop-history-duplicate'),
+    ;; so if that page's URL also appears earlier in history (revisiting a
+    ;; page you'd already been on), dedup can discard the fresh
+    ;; current-page entry and leave some *other*, unrelated page first --
+    ;; and `eww-restore-desktop' blindly treats the first history entry as
+    ;; "the current page", so restore can reopen the wrong page entirely,
+    ;; not just land at the wrong point.  Find the entry that actually
+    ;; matches the live URL, stamp the live point onto it, and force it to
+    ;; the front (with :history-position 0) so restore gets both right.
+    (define-advice eww-desktop-misc-data (:around (fn directory) sj-save-live-point)
+      (let* ((live-point (point))
+             (current-url (plist-get eww-data :url))
+             (result (funcall fn directory))
+             (history (plist-get result :history))
+             (current (and current-url
+                           (seq-find (lambda (e) (equal (plist-get e :url) current-url))
+                                     history))))
+        (when current
+          (setq result (plist-put result :history
+                                   (cons (plist-put (copy-sequence current) :point live-point)
+                                         (remq current history))))
+          (setq result (plist-put result :history-position 0)))
+        result))
+
+    ;; `eww-restore-desktop' saves `:point' but loses it on reload:
+    ;; `(eww url)' -> `eww-setup-buffer' -> `eww-save-history' overwrites
+    ;; `eww-data''s `:point' with 1 before the fetch even starts (see the
+    ;; "FIXME: restore :point?" left in `eww-restore-history' upstream).
+    ;; Track the desired point in a table keyed by the buffer *object*
+    ;; (not a buffer-local var -- `eww-mode' runs `kill-all-local-variables'
+    ;; on the way in; not the buffer *name* either -- `eww-auto-rename-buffer'
+    ;; above renames it mid-render, before `eww-render' finishes) and
+    ;; re-apply it once `eww-render' actually finishes, however long the
+    ;; fetch takes.
+    (defvar sj-eww-desktop-restore-points (make-hash-table :test #'eq)
+      "Buffer -> desktop-saved point, pending re-application by `eww-render'.")
+
+    (define-advice eww-restore-desktop (:around (fn file-name buffer-name misc-data) sj-restore-point)
+      ;; Upstream bug: `eww-desktop-misc-data' can save :history-position
+      ;; as nil (`eww-desktop-remove-duplicates' breaks eq-identity for
+      ;; single-entry histories, so `cl-position' finds nothing).
+      ;; Restoring nil into `eww-history-position' crashes the reload's
+      ;; `(zerop eww-history-position)' check in `eww-save-history' with
+      ;; "Wrong type argument: number-or-marker-p, nil".
+      (when (null (plist-get misc-data :history-position))
+        (setq misc-data (plist-put (copy-sequence misc-data) :history-position 0)))
+      (when-let* ((point (plist-get (car (plist-get misc-data :history)) :point)))
+        (puthash (get-buffer-create buffer-name) point sj-eww-desktop-restore-points))
+      (funcall fn file-name buffer-name misc-data))
+
+    (define-advice eww-render (:after (status url &optional point buffer encode) sj-restore-point)
+      (when-let* ((buffer)
+                  (target (gethash buffer sj-eww-desktop-restore-points)))
+        (remhash buffer sj-eww-desktop-restore-points)
+        (with-current-buffer buffer
+          (goto-char (min target (point-max))))))
+
+    ;; Lazy: an auth-source read during init (eww loads via ol-eww) runs before
+    ;; minimal-emacs restores file-name-handler-alist, so authinfo.gpg is read as
+    ;; ciphertext and auth-source caches that for the whole session.
+    (define-advice eww (:before (&rest _) sj-kagi-prefix)
+      (when-let* ((token (auth-source-pick-first-password :host "kagi.com" :user "token")))
+        (setq eww-search-prefix (concat "https://kagi.com/html/search?token=" token "&q="))
+        (advice-remove 'eww #'eww@sj-kagi-prefix)))
 
     (defun sj-eww-kagi-declutter (dom)
       "Drop Kagi's header/nav/sidebar/footer chrome, keeping only the <main> results."
