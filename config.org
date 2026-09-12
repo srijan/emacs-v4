@@ -3621,24 +3621,63 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       ;; Tracking my fork; upstream is eddof13/herdr.el (added as the
       ;; `upstream' git remote in the elpaca source checkout).
       :ensure (:host github :repo "srijan/herdr.el")
-      ;; Two surfaces, one key each.  C-x M is the compact transient — what
-      ;; this key did before the dispatcher existed, so the muscle memory
-      ;; still holds, and it is the one to use from inside an agent's
-      ;; terminal where a full-window buffer would pull you out of the work.
-      ;; C-c H is the dashboard.  M-x herdr also opens the dashboard.
-      :bind (("C-x M" . herdr-menu)        ; pairs with C-x m if you bind ghostel there
-             ("C-c H" . herdr-agents)
-             :map project-prefix-map
+      ;; No C-x M.  It was `herdr-menu', then `herdr-transient'; both were
+      ;; menus over commands C-c H and the dashboard already reach, and both
+      ;; are gone.  C-x m stays ghostel's alone.
+      ;; No :custom either.  herdr-terminal-backend is gone: one buffer per
+      ;; pane is the only way now, which is what agent-windows always was.
+      :bind (:map project-prefix-map
              ("h" . herdr-project))
-      :custom (herdr-terminal-backend 'agent-windows)
-      :config (herdr-modeline-mode 1))
+      :bind-keymap ("C-c H" . herdr-command-map))
+
+    (defun my/herdr-lantern--pane ()
+      "Return the pane id of a running, attachable Lantern chat, or nil.
+
+       Matched on the pane label: herdr seats a plugin pane carrying its
+       manifest title, so the chat is the pane labelled \"Lantern\"
+       wherever it has been moved to. The agent test is what makes the
+       answer usable — `herdr-term-select-pane' cannot attach to a pane
+       herdr has not yet detected an agent in, which on a cold open is the
+       first few seconds."
+      (seq-some (lambda (pane)
+                  (and (equal "Lantern" (alist-get 'label pane))
+                       (alist-get 'agent pane)
+                       (alist-get 'pane_id pane)))
+                (herdr-state-panes (herdr-state-current))))
+
+    (defun my/herdr-lantern ()
+      "Open or focus the Lantern chat and show its buffer in Emacs."
+      (interactive)
+      (require 'cl-lib)
+      (require 'herdr)
+      (require 'herdr-call)
+      (herdr-start)
+      (let ((current-prefix-arg '(4))
+            (answers '(("plugin_id" . "aigora.lantern")
+                       ("action_id" . "open"))))
+        (cl-letf (((symbol-function 'herdr-call--read-value)
+                   (lambda (_method name) (cdr (assoc name answers)))))
+          (herdr-call "plugin.action.invoke")))
+      (let ((deadline (+ (float-time) 20))
+            (pane nil))
+        (while (and (not (setq pane (my/herdr-lantern--pane)))
+                    (< (float-time) deadline))
+          (herdr-state-reconcile-panes)
+          (sit-for 0.3))
+        (cond
+         ((null pane)
+          (message "herdr: lantern did not come up within 20s"))
+         ((herdr-term-select-pane pane))
+         (t (message "herdr: lantern is at %s, but Emacs could not attach"
+                     pane)))))
+
+    ;; (keymap-global-set "C-c L" #'my/herdr-lantern)
 
     (use-package inheritenv
       :demand t
       :ensure (:host github :repo "purcell/inheritenv"))
 
     (use-package monet
-      :demand t
       :ensure (:host github :repo "stevemolitor/monet")
       :init
       (setq monet-prefix-key "C-c C-m")
