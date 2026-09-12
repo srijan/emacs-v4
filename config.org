@@ -5216,12 +5216,20 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                      :password (lambda ()
                                  (auth-source-pick-first-password :host sj/miniflux-host :user "fever")))))
     (elfeed-protocol-enabled-protocols '(fever))
+    (elfeed-protocol-fever-maxsize 50)
+    (elfeed-protocol-fever-update-unread-only nil)
     :hook (elfeed-search-mode . elfeed-protocol-enable)
     )
   (use-package elfeed-webkit
     :after elfeed
     :bind (:map elfeed-show-mode-map
                 ("%" . elfeed-webkit-toggle)))
+  (use-package elfeed-score
+    :after elfeed
+    :demand t
+    :config
+    (define-key elfeed-search-mode-map (kbd "=") elfeed-score-map)
+    (elfeed-score-enable))
 
 #+END_SRC
 *** Slack
