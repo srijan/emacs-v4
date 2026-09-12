@@ -5537,9 +5537,56 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
 #+end_src
 *** Reddit
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package reddigg
-    :demand t
+  (use-package websocket)
+
+  (use-package browser-gt
+    :ensure (:host github :repo "dmgerman/browser-gt")
     :config
+    (require 'browser-gt-www)         ; SAVE_PAGE
+    (require 'browser-gt-chatgpt)     ; CHATGPT
+    (require 'browser-gt-youtube)     ; YOUTUBE + YOUTUBE_TRANSCRIPT
+    (require 'browser-gt-babel)       ; org-babel browser-gt-js blocks
+    (require 'browser-gt-tab-manager) ; M-x browser-gt-tab-manager
+    (require 'browser-gt-url-handler) ; browser-gt-browse-url + browser-gt-url-routes
+    (browser-gt-start))
+  (use-package reddigg
+    :ensure (:host github :repo "thanhvg/emacs-reddigg")
+    ;; :bind/:hook would defer loading and with it the browse-url handler
+    ;; registered in :config below.
+    :demand t
+    ;; Browse the generated org buffers read-only with pager keys.  Not
+    ;; `view-mode': it takes RET, which org needs for reddigg's elisp:
+    ;; links (subs, "load more", comment threads).
+    :bind (:map reddigg-view-mode-map
+           ("q" . quit-window)
+           ("SPC" . scroll-up-command)
+           ("S-SPC" . scroll-down-command)
+           ("DEL" . scroll-down-command))
+    :hook (reddigg-view-mode . sj-reddigg-read-only)
+    :preface
+    (defun sj-reddigg-read-only ()
+      "Make reddigg's org buffers read-only while `reddigg-view-mode' is on."
+      (setq buffer-read-only reddigg-view-mode))
+    :config
+    ;; reddigg re-renders by erasing the same buffers; let those writes
+    ;; through the read-only flag.
+    (dolist (fn '(reddigg--print-sub reddigg--print-comments reddigg-view-main))
+      (advice-add fn :around
+                  (lambda (orig &rest args)
+                    (let ((inhibit-read-only t)) (apply orig args)))))
+    ;; "load more comments" edits the buffer from a promise callback, so a
+    ;; dynamic `inhibit-read-only' cannot cover it; drop read-only until
+    ;; the fetch settles.
+    (advice-add 'reddigg--view-more-cmts :around
+                (lambda (orig &rest args)
+                  (let ((buf (current-buffer)))
+                    (setq buffer-read-only nil)
+                    (promise-finally
+                     (apply orig args)
+                     (lambda ()
+                       (when (buffer-live-p buf)
+                         (with-current-buffer buf
+                           (setq buffer-read-only t))))))))
     (sj-browse-url-set-handler-rx
      'reddit
      '((seq line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
