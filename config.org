@@ -3763,16 +3763,19 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                            (my-mac-p "/opt/homebrew/bin/git")
                            (t "git"))))
   (use-package forge
-    :after magit)
+    :after magit
+    :custom
+    (forge-owned-accounts
+     '(("srijan" . ((remote-name . "srijan")))))
+    )
   (use-package diff-hl
-    :commands (diff-hl-mode
-               global-diff-hl-mode)
-    :hook (prog-mode . diff-hl-mode)
-    :init
-    (setq diff-hl-flydiff-delay 0.4)
-    (setq diff-hl-show-staged-changes nil)
-    (setq diff-hl-update-async t)
-    (setq diff-hl-global-modes '(not pdf-view-mode image-mode)))
+    :hook ((prog-mode . diff-hl-mode)
+           (diff-hl-mode . diff-hl-flydiff-mode))
+    :custom
+    (diff-hl-flydiff-delay 0.4)
+    (diff-hl-show-staged-changes nil)
+    (diff-hl-update-async t)
+    (diff-hl-global-modes '(not pdf-view-mode image-mode)))
 #+end_src
 ** Language Modes
 #+begin_src emacs-lisp :tangle "post-init.el"
