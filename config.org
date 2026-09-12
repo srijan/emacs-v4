@@ -921,6 +921,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 
     :init
     (setq prefix-help-command #'embark-prefix-help-command)
+    :custom
+    (embark-quit-after-action nil)
 
     :config
     ;; Hide the mode line of the Embark live/completions buffers
