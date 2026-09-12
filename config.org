@@ -770,6 +770,7 @@ from the Phone block via =material-pbm-icons= (see below). Design:
     :init
     (setq scroll-conservatively 101 ; important!
           scroll-margin 0)
+    (setq isearch-allow-scroll 'unlimited)
     :config
     (ultra-scroll-mode 1))
 
