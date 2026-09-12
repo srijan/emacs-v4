@@ -3490,6 +3490,129 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :delight)
 #+end_src
 ** AI Assistants
+*** gptel
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when (not my-phone-p)
+    (use-package gptel
+      :bind (("C-c g g"   . gptel)
+             ("C-c g s"   . gptel-send)
+             ("C-c g m"   . gptel-menu)
+             ("C-c g r"   . gptel-rewrite)
+             ("C-c g a"   . gptel-add)
+             ("C-c g f"   . gptel-add-file)
+             ("C-c g t"   . gptel-tools)
+             ("C-c g o t" . gptel-org-set-topic)
+             ("C-c g o p" . gptel-org-set-properties))
+      :custom
+      (gptel-default-mode 'org-mode)
+      (gptel-org-branching-context 'nil)
+      (gptel-track-media t)
+      (gptel-include-reasoning 'ignore)
+      (gptel-use-tools t)
+      (gptel-confirm-tool-calls 'auto)
+      (gptel-include-tool-results 'auto)
+      (gptel-expert-commands t)
+      (gptel-context-restrict-to-project-files t)
+      :hook
+      ((gptel-mode . gptel-highlight-mode)
+       (gptel-post-stream . gptel-auto-scroll)
+       (gptel-post-response-functions . gptel-end-of-response))
+      :config
+      ;; Default backend: ChatGPT subscription via Codex OAuth.
+      ;; Login is prompted on first use; force with M-x gptel-openai-oauth-login.
+      (setq gptel-model 'gpt-5.6-sol
+            gptel-backend (gptel-make-openai-oauth "OpenAI"))
+
+      (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "* @srijan\n"
+            (alist-get 'org-mode gptel-response-prefix-alist) "** @assistant\n")
+      
+      (gptel-make-ollama "Ollama"
+        :host "localhost:11434"
+        :stream t
+        :request-params '(:options (:num_ctx 32768))
+        :models '((gemma4:26b-a4b-it-qat :description "MoE QAT, main local model")
+                  (gpt-oss:20b :description "MoE, tools, quick local tasks")))
+      
+      (dolist (d '((emacs   . "You are an Emacs and Elisp expert. Prefer idiomatic Emacs Lisp, cite the relevant Info manual node when helpful, and be terse.")
+                   (org     . "You help with Org mode: agenda, capture, org-gtd and Denote notes. Respond in Org markup. Keep answers short.")
+                   (writing . "You are a careful editor. Improve clarity and flow, keep the author's voice, do not add fluff. Return only the revised text.")
+                   (code    . "You are an expert programmer. Return only code with minimal comments unless asked to explain.")))
+        (setf (alist-get (car d) gptel-directives) (cdr d)))
+      
+      (gptel-make-preset 'fast
+        :description "Subscription, quick, no tools"
+        :backend "OpenAI" :model 'gpt-5.6-luna :tools nil)
+      
+      (gptel-make-preset 'deep
+        :description "Subscription, best model, reasoning shown"
+        :backend "OpenAI" :model 'gpt-6-astra
+        :include-reasoning t :tools nil)
+      
+      (gptel-make-preset 'local
+        :description "Gemma 4 MoE, offline"
+        :backend "Ollama" :model 'gemma4:26b-a4b-it-qat :tools nil)
+      
+      (gptel-make-preset 'local-fast
+        :description "gpt-oss, quick offline tasks"
+        :backend "Ollama" :model 'gpt-oss:20b :tools nil)
+      
+      (gptel-make-tool
+       :name "read_buffer"
+       :description "Return the full contents of a live Emacs buffer."
+       :category "emacs"
+       :args '((:name "buffer" :type string :description "Buffer name"))
+       :function (lambda (buffer)
+                   (unless (buffer-live-p (get-buffer buffer))
+                     (error "Buffer %s is not live" buffer))
+                   (with-current-buffer buffer
+                     (buffer-substring-no-properties (point-min) (point-max)))))
+      
+      (gptel-make-tool
+       :name "org_agenda_today"
+       :description "Return today's Org agenda as plain text."
+       :category "org"
+       :args nil
+       :function (lambda ()
+                   (save-window-excursion
+                     (org-agenda-list nil nil 1)
+                     (prog1 (with-current-buffer org-agenda-buffer-name
+                              (buffer-substring-no-properties (point-min) (point-max)))
+                       (kill-buffer org-agenda-buffer-name))))))
+    
+    ;; Agent: web search, URL fetch, YouTube, files, Bash, Elisp, sub-agents.
+    ;; M-x gptel-agent, or "@gptel-agent ..." in any prompt.
+    (use-package gptel-agent
+      :demand t
+      :after gptel
+      :bind ("C-c g A" . gptel-agent)
+      :config (gptel-agent-update))
+    
+    (use-package gptel-quick
+      :ensure (:host github :repo "karthink/gptel-quick")
+      :demand t
+      :after gptel
+      :bind ("C-c g q" . gptel-quick)
+      :custom (gptel-quick-word-count 40))
+    
+    (use-package gptel-magit
+      :demand t
+      :after (gptel magit)
+      :config (gptel-magit-install))
+    
+    ;; MCP servers -> gptel tools. M-x gptel-mcp-connect after configuring.
+    (use-package mcp
+      :demand t
+      :after gptel
+      :custom
+      (mcp-hub-servers
+       `(("filesystem" . (:command "npx"
+                                   :args ("-y" "@modelcontextprotocol/server-filesystem"
+                                          ,(expand-file-name "~/org"))))))
+      :config (require 'gptel-integrations))
+    )
+#+end_src
+
+*** Others
 #+begin_src emacs-lisp :tangle "post-init.el"
 
   (when (not my-phone-p)
@@ -3548,30 +3671,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       :config
       (claude-code-ide-emacs-tools-setup))
 
-    (use-package gptel
-      :if (not my-phone-p)
-      :bind
-      ("C-c g g" . (lambda () (interactive) 
-                     (switch-to-buffer (gptel "*Claude*"))))
-      ("C-c g s" . gptel-send)
-      ("C-c g m" . gptel-menu)
-      ("C-c g r" . gptel-rewrite)
-      ("C-c g t" . gptel-tools)
-      :config
-      (setq
-       gptel-track-media t
-       gptel-default-mode #'org-mode
-       ;; gptel-model 
-       gptel-backend (gptel-make-anthropic "Claude"
-                       :stream t
-                       :key gptel-api-key))
-      (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@srijan\n")
-      (setf (alist-get 'org-mode gptel-response-prefix-alist) "@claude\n")
-      (require 'gptel-plus)
-      )
-    (use-package gptel-plus
-      :ensure (:host github :repo "benthamite/gptel-plus"))
-
     (use-package agent-shell
       :ensure (:host github :repo "xenodium/agent-shell")
       :demand t
@@ -3592,25 +3691,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
       :after agent-shell
       :commands (agent-shell-dashboard))
-
-
-    (use-package eai-tool-library
-      :if (not my-phone-p)
-      :disabled
-      :ensure (:host github :repo "aard-fi/eai-tool-library")
-      :demand t
-      :init
-      (setq eai-tool-library-use-maybe-safe t)
-      (require 'eai-tool-library)
-      (require 'eai-doctor)
-      :config
-      ;; set this if you want to use maybe safe functions (recommended)
-      ;;(setq gptel-tool-library-use-maybe-safe t)
-      ;; set this if you also want to use unsafe functions
-      ;;(setq gptel-tool-library-use-unsafe t)
-      (dolist (module '("bbdb" "buffer" "elisp" "emacs" "gnus" "os" ))
-        (eai-tool-library-load-module module))
-      )
     )
 
 #+end_src
