@@ -3720,8 +3720,16 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
               (agent-shell-openai-make-authentication :login t))
       (setopt agent-shell-session-restore-verbosity 'full)
       )
+    ;; timfel/agent-shell-desktop.el's config lookup calls `map-elt' on raw
+    ;; `agent-shell-agent-configs' entries, which are maker *functions* by
+    ;; default (see `agent-shell--resolved-agent-configs'), not alists --
+    ;; every restore signals "No applicable method: map-elt,
+    ;; agent-shell-<x>-make-agent-config, :identifier".  The fix lives on
+    ;; honki12345's `agent/resolved-configs' branch, not yet on that fork's
+    ;; default `custom' branch, so pin to it explicitly.
     (use-package agent-shell-desktop
-      :ensure (:host github :repo "timfel/agent-shell-desktop.el")
+      :ensure (:host github :repo "honki12345/agent-shell-desktop.el"
+                     :branch "agent/resolved-configs")
       :demand t
       :after (agent-shell desktop)
       :config
