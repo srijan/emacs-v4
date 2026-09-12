@@ -1033,6 +1033,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (setq consult-narrow-key "<"))
 
 #+end_src
+
+
 ** Code Folding
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package outline-indent
@@ -1604,7 +1606,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       :config
       (defun ghostel-send-C-k-and-kill ()
         "Send `C-k' to ghostel.
-    Like normal Emacs `C-k'.  Kill to end of line and put content in kill-ring."
+      Like normal Emacs `C-k'.  Kill to end of line and put content in kill-ring."
         (interactive)
         (kill-ring-save (point) (line-end-position))
         (ghostel-send-key "k" "ctrl"))
@@ -5058,7 +5060,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
     (defun sj-elfeed-fever--catch-up (host-url rounds total)
       "Fetch one batch of items past the update mark for HOST-URL, then recurse.
-  ROUNDS caps the loop, TOTAL accumulates the entries fetched so far."
+        ROUNDS caps the loop, TOTAL accumulates the entries fetched so far."
       (let* ((proto-id (elfeed-protocol-fever-id host-url))
              (since (elfeed-protocol-fever-get-update-mark proto-id 'update))
              (url (concat (elfeed-protocol-fever--get-api-url host-url)
@@ -5078,12 +5080,12 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (defun sj-elfeed-fever-catch-up (host-url)
       "Fetch everything newer than the last seen id at HOST-URL, then reconcile.
 
-  `elfeed-protocol-fever-update' asks for one fixed window of
-  `elfeed-protocol-fever-maxsize' ids and stops, so a multi-day gap needs a
-  keypress per 50 entries -- and a window holding none of our ids stalls it
-  permanently, since the mark only advances to the highest id actually
-  returned.  Fever's `since_id' pages by id and skips gaps, so looping it
-  catches up in one go and cannot wedge."
+        `elfeed-protocol-fever-update' asks for one fixed window of
+        `elfeed-protocol-fever-maxsize' ids and stops, so a multi-day gap needs a
+        keypress per 50 entries -- and a window holding none of our ids stalls it
+        permanently, since the mark only advances to the highest id actually
+        returned.  Fever's `since_id' pages by id and skips gaps, so looping it
+        catches up in one go and cannot wedge."
       (interactive (list (sj-elfeed-fever--host)))
       (if (< (elfeed-protocol-fever-get-update-mark
               (elfeed-protocol-fever-id host-url) 'update)
@@ -5096,13 +5098,13 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
     (defun sj-elfeed-fever-pull-read-state (host-url)
       "Apply the Fever server's unread set at HOST-URL to the local elfeed db.
-  Entries read in the Miniflux UI get their `unread' tag cleared here, and
-  entries marked unread there get it back.  Nothing is pushed to the server.
+        Entries read in the Miniflux UI get their `unread' tag cleared here, and
+        entries marked unread there get it back.  Nothing is pushed to the server.
 
-  `elfeed-protocol-fever-update' only corrects tags on entries it re-fetches,
-  and it fetches by ascending id, so read state set outside Emacs never lands
-  otherwise.  Fever returns the whole unread id set in one unpaginated
-  response, so this costs a single request regardless of backlog size."
+        `elfeed-protocol-fever-update' only corrects tags on entries it re-fetches,
+        and it fetches by ascending id, so read state set outside Emacs never lands
+        otherwise.  Fever returns the whole unread id set in one unpaginated
+        response, so this costs a single request regardless of backlog size."
       (interactive
        (list (sj-elfeed-fever--host)))
       (let* ((proto-id (elfeed-protocol-fever-id host-url))
@@ -5141,7 +5143,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (defun sj-elfeed-hard-refresh()
       "Performs a hard-refresh of the elfeed database and fetching everything from scratch"
       "Unload elfeed db, delete the directory, fever-reinit, and then open elfeed again
-       Ask yes or no"
+             Ask yes or no"
       (interactive)
       (when (yes-or-no-p "This will delete your elfeed database and re-fetch everything. Are you sure? ")
         (message "Deleting elfeed database...")
@@ -5202,7 +5204,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
     (defun sj-elfeed-search-setup-toolbar ()
       "When elfeed-search-mode starts, enable tool-bar-here-mode, and setup a
-       hook so that tool-bar-mode is disabled when the buffer is killed."
+             hook so that tool-bar-mode is disabled when the buffer is killed."
       (tool-bar-here-mode 1)
       (if (= 1 (length (default-value 'tool-bar-map))) (tool-bar-setup)) ;; had to add this for non-empty default toolbars
       (add-hook 'kill-buffer-hook #'(lambda() (tool-bar-here-mode -1)) -10 t))
@@ -5591,7 +5593,7 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
      'reddit
      '((seq line-start "http" (zero-or-one "s") "://www.reddit.com/" (one-or-more anychar)))
      (lambda (url &rest _) (reddigg-view-comments url)))
-    ) 
+    )
 #+end_src
 *** GitHub
 #+begin_src emacs-lisp :tangle "post-init.el"
