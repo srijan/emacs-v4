@@ -3263,6 +3263,11 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :init
     (require 'denote)
     :config
+    (setq consult-notes-file-dir-sources
+          `(("Files" ?f ,my-notes-dir)
+            ("Docs" ?d ,(expand-file-name "docs/" my-notes-dir))
+            ("Reference" ?r ,(expand-file-name "reference/" my-notes-dir) :hidden t)
+            ("Archive" ?a ,(expand-file-name "archived/" my-notes-dir) :hidden t)))
     (consult-notes-denote-mode 1)
     :bind
     ("C-c n f" . consult-notes)
