@@ -5513,10 +5513,6 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
             mastodon-tl--highlight-current-toot t
             mastodon-auth-use-auth-source t
             mastodon-tl-use-nerd-icons t)
-
-    ;; mastodon-tl.el reads `mastodon-inspect-profile-requests' on every
-    ;; request but only declares it; the defcustom lives in
-    ;; mastodon-inspect.el, which nothing requires (develop @ 9318711).
     (require 'mastodon-inspect)
 
     ;; Fediverse URLs span arbitrary domains, so a predicate matcher is
@@ -5529,6 +5525,14 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
      (lambda (url &rest _)
        (let ((browse-url-browser-function sj-browse-url-default-handler))
          (mastodon-url-lookup url))))
+
+    ;; `o' on a toot calls `browse-url', which the dispatcher above would
+    ;; route straight back into mastodon.el.  Send it to the external
+    ;; browser instead (same target as eww's C-u RET).
+    (define-advice mastodon-toot-browse-toot-url (:around (fn &rest args) sj-external)
+      "Open the toot's URL in `browse-url-secondary-browser-function'."
+      (let ((browse-url-browser-function browse-url-secondary-browser-function))
+        (apply fn args)))
     )
 #+end_src
 *** Reddit
