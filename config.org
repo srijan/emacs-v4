@@ -1591,6 +1591,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       :demand t
       :bind (("C-x m" . ghostel)
              :map ghostel-semi-char-mode-map
+             ("M-0" . nil)
              ("C-s"  . consult-line)
              ("M-<backspace>" . ghostel-backward-kill-word)
              ;; ;; I'm used to go up/down the shell history with M-n/p from eshell
