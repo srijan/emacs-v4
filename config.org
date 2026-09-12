@@ -6689,6 +6689,25 @@ lock, so the lock is released just before reading; ~desktop-read~ reclaims it.
                                       (caar entries))))
         (nth 1 (assoc choice entries)))))
 
+  ;; `desktop-save' has no per-buffer error isolation on the save side
+  ;; (unlike restore, which reports "Can't load buffer %s" per buffer and
+  ;; moves on): one buffer's `desktop-save-buffer' function throwing
+  ;; aborts the whole `desktop-save' call, which blocks quitting Emacs
+  ;; entirely since `kill-emacs' runs it uncaught.  Isolate it the same
+  ;; way restore already is, and log which buffer/mode was skipped so a
+  ;; recurrence is diagnosable instead of just blocking the next quit.
+  ;; Deferred until `desktop' is actually loaded (this block runs at
+  ;; startup, before the `emacs-startup-hook' below requires it).
+  (with-eval-after-load 'desktop
+    (add-to-list 'desktop-modes-not-to-save 'sj-desktop-save-skip)
+    (define-advice desktop-buffer-info (:around (fn buffer) sj-dont-block-quit)
+      (condition-case err
+          (funcall fn buffer)
+        (error
+         (message "Desktop: skipping buffer %S while saving -- %s"
+                  (buffer-name buffer) (error-message-string err))
+         (list nil nil "" 'sj-desktop-save-skip)))))
+
   (add-hook 'emacs-startup-hook
             (lambda ()
               (require 'desktop)
