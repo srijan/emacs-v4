@@ -4915,21 +4915,26 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                                        rx-patterns)
                                handler))
 
-  (defun sj-browse-url--handler (url)
-    "Return the handler in `sj-browse-url-handlers' matching URL, else nil."
-    (cl-loop for (_key matcher . func) in sj-browse-url-handlers
+  (defun sj-browse-url--match (url)
+    "Return (KEY . HANDLER) from `sj-browse-url-handlers' matching URL, else nil."
+    (cl-loop for (key matcher . func) in sj-browse-url-handlers
              when (if (functionp matcher)
                       (funcall matcher url)
                     (cl-some (lambda (regex) (string-match-p regex url))
                              matcher))
-             return func))
+             return (cons key func)))
+
+  (defun sj-browse-url--handler (url)
+    "Return the handler in `sj-browse-url-handlers' matching URL, else nil."
+    (cdr (sj-browse-url--match url)))
 
   (defun sj-browse-url (url &optional new-window)
-    "Browse URL using configured handlers or default handler."
+    "Browse URL using configured handlers or default handler.
+  Every URL is logged with `sj-visits-log' (see \"Visit log\" below)."
     (interactive (browse-url-interactive-arg "URL: "))
-    (funcall (or (sj-browse-url--handler url)
-                 sj-browse-url-default-handler)
-             url new-window))
+    (let ((match (sj-browse-url--match url)))
+      (sj-visits-log url (or (car match) sj-browse-url-default-handler))
+      (funcall (or (cdr match) sj-browse-url-default-handler) url new-window)))
 
   (setopt browse-url-browser-function 'sj-browse-url)
 
@@ -4955,8 +4960,153 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       (let* ((url (eww--transform-url (get-text-property (point) 'shr-url)))
              (handler (and url (sj-browse-url--handler url))))
         (if handler
-            (funcall handler url nil)
+            (sj-browse-url url)
           (funcall fn external mouse-event)))))
+#+end_src
+*** Visit log
+#+begin_src emacs-lisp :tangle "post-init.el"
+  ;; Every URL opened from Emacs is appended to a small sqlite file, with
+  ;; where it came from in words, so promnesia can show "you read this
+  ;; from feed X on Tuesday" in the browser sidebar.  Only URL visits are
+  ;; logged here; file open/save history is a different need and stays
+  ;; out (see docs/research/2026-09-12-emacs-history-promnesia.md).
+  ;;
+  ;; Three capture points:
+  ;; - `sj-browse-url': every dispatched URL, `via' = the matched handler
+  ;;   key, `context' built from the calling buffer by major mode.
+  ;; - `eww-after-render-hook': in-eww navigation and the title eww
+  ;;   learns after fetching.  A row for the same URL logged within
+  ;;   `sj-visits-merge-seconds' gets its title filled in instead of a
+  ;;   second row, so a dispatched URL does not appear twice.
+  ;; - `elfeed-show-entry': reading an entry inside elfeed counts as a
+  ;;   visit to its link even if the link is never opened.
+  (defgroup sj-visits nil "Log URL visits made from Emacs to sqlite."
+    :group 'sj-browse)
+
+  (defcustom sj-visits-db-file
+    (expand-file-name "sj-visits.sqlite" user-emacs-directory)
+    "Sqlite file holding the visit log.  Read by promnesia's `emacs' source."
+    :type 'file)
+
+  (defcustom sj-visits-ignore-regexps nil
+    "URLs matching any of these regexps are not logged."
+    :type '(repeat regexp))
+
+  (defcustom sj-visits-merge-seconds 30
+    "Treat a render of the most recently logged URL within this many
+  seconds as the same visit and only fill in its title."
+    :type 'integer)
+
+  (defvar sj-visits--db nil "Open sqlite handle, or nil.")
+
+  (defun sj-visits--db ()
+    "Return the open visit db, creating file and table on first use."
+    (or (and sj-visits--db (sqlitep sj-visits--db) sj-visits--db)
+        (progn
+          (make-directory (file-name-directory sj-visits-db-file) t)
+          ;; Emacs 31 added a READONLY argument and opens read-only when it
+          ;; is omitted (not merely nil), so pass it where the arity allows.
+          (setq sj-visits--db (if (>= (cdr (func-arity #'sqlite-open)) 2)
+                                  (sqlite-open sj-visits-db-file nil)
+                                (sqlite-open sj-visits-db-file)))
+          (sqlite-execute sj-visits--db
+                          "CREATE TABLE IF NOT EXISTS visits (
+                             ts TEXT NOT NULL, url TEXT NOT NULL,
+                             title TEXT, via TEXT NOT NULL, context TEXT)")
+          sj-visits--db)))
+
+  (defun sj-visits--scrub (url)
+    "Return URL without secrets: the Kagi search token.  Nil if ignored."
+    (cond
+     ((seq-some (lambda (re) (string-match-p re url)) sj-visits-ignore-regexps) nil)
+     ((string-match-p "\\`https?://\\([^/]*\\.\\)?kagi\\.com/" url)
+      (thread-last url
+                   (replace-regexp-in-string "\\([?&]\\)token=[^&#]*&?" "\\1")
+                   (replace-regexp-in-string "[?&]\\(#\\|\\'\\)" "\\1")))
+     (t url)))
+
+  (defun sj-visits--context ()
+    "Describe the current buffer as the place a URL was opened from."
+    (cond
+     ((and (derived-mode-p 'elfeed-show-mode 'elfeed-search-mode)
+           (fboundp 'elfeed-search-selected))
+      (when-let* ((entry (if (derived-mode-p 'elfeed-show-mode)
+                             elfeed-show-entry
+                           (elfeed-search-selected :ignore-region)))
+                  (feed (elfeed-entry-feed entry)))
+        (format "elfeed: %s: %s"
+                (or (elfeed-meta feed :title) (elfeed-feed-title feed))
+                (elfeed-entry-title entry))))
+     ((derived-mode-p 'eww-mode)
+      (format "eww: %s" (or (plist-get eww-data :title) (plist-get eww-data :url))))
+     ((derived-mode-p 'org-mode)
+      (format "org: %s: %s" (buffer-name)
+              (or (ignore-errors (org-get-heading t t t t)) "")))
+     (t (format "%s: %s" major-mode (buffer-name)))))
+
+  (defun sj-visits--recent-p (url via)
+    "Non-nil if URL VIA was logged within `sj-visits-merge-seconds'."
+    (when-let* ((last (car (sqlite-select
+                            (sj-visits--db)
+                            "SELECT ts FROM visits WHERE url = ? AND via = ? ORDER BY rowid DESC LIMIT 1"
+                            (list url via)))))
+      (< (- (float-time) (float-time (date-to-time (car last))))
+         sj-visits-merge-seconds)))
+
+  (defun sj-visits-log (url via &optional title context)
+    "Append a visit to URL reached VIA (a symbol or string) to the db.
+  TITLE and CONTEXT default to nil and `sj-visits--context'.  A repeat of
+  the same URL and VIA within `sj-visits-merge-seconds' (flipping between
+  elfeed entries with n/p, a reload) is not a new visit.  Never signals."
+    (condition-case err
+        (when-let* (((sqlite-available-p))
+                    (url (sj-visits--scrub url))
+                    (via (format "%s" via))
+                    ((not (sj-visits--recent-p url via))))
+          (sqlite-execute (sj-visits--db)
+                          "INSERT INTO visits (ts, url, title, via, context) VALUES (?, ?, ?, ?, ?)"
+                          (list (format-time-string "%FT%T%:z") url title via
+                                (or context (sj-visits--context))))
+          t)
+      (error (message "sj-visits: %s" (error-message-string err)) nil)))
+
+  (defvar sj-visits--eww-restoring (make-hash-table :test #'eq)
+    "Buffers eww is reloading from desktop; their first render is not a visit.")
+
+  (defun sj-visits--eww-after-render ()
+    "Log the page eww just rendered, merging with a just-dispatched row."
+    (condition-case err
+        (when-let* (((sqlite-available-p))
+                    (url (sj-visits--scrub (plist-get eww-data :url)))
+                    (title (or (plist-get eww-data :title) url)))
+          (if (gethash (current-buffer) sj-visits--eww-restoring)
+              (remhash (current-buffer) sj-visits--eww-restoring)
+            (let ((last (car (sqlite-select (sj-visits--db)
+                                            "SELECT rowid, ts FROM visits WHERE url = ? ORDER BY rowid DESC LIMIT 1"
+                                            (list url)))))
+              (if (and last
+                       (< (- (float-time) (float-time (date-to-time (nth 1 last))))
+                          sj-visits-merge-seconds))
+                  (sqlite-execute (sj-visits--db) "UPDATE visits SET title = ? WHERE rowid = ?"
+                                  (list title (car last)))
+                (sj-visits-log url 'eww title
+                               (when-let* ((prev (car eww-history)))
+                                 (format "eww: %s" (or (plist-get prev :title)
+                                                       (plist-get prev :url)))))))))
+      (error (message "sj-visits: %s" (error-message-string err)))))
+
+  (define-advice eww-restore-desktop (:before (_file-name buffer-name _misc-data) sj-visits)
+    (when (bound-and-true-p eww-restore-desktop)
+      (puthash (get-buffer-create buffer-name) t sj-visits--eww-restoring)))
+
+  (define-advice elfeed-show-entry (:after (entry) sj-visits)
+    (when-let* ((link (elfeed-entry-link entry))
+                (feed (elfeed-entry-feed entry)))
+      (sj-visits-log link 'elfeed (elfeed-entry-title entry)
+                     (format "elfeed: %s"
+                             (or (elfeed-meta feed :title) (elfeed-feed-title feed))))))
+
+  (add-hook 'eww-after-render-hook #'sj-visits--eww-after-render)
 #+end_src
 *** Linkding
 #+begin_src emacs-lisp :tangle "post-init.el"
