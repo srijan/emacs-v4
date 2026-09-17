@@ -18,7 +18,8 @@ Literate config: `config.org` is the only source. `README.md` covers install, se
 There is no test suite or lint step. Verification is against the running Emacs.
 
 ```sh
-# The live Emacs publishes a server file, not a default socket
+# server-use-tcp is on for macOS, so there is no default socket; EMACS_SERVER_FILE
+# is exported by the fish and zsh configs.  If emacsclient says "can't find socket":
 emacsclient --server-file ~/.emacs.d/var/server/server --eval '(...)'
 
 # Tangle headlessly (from README); or in Emacs: C-c C-v C-t, or M-x sj-dashboard-tangle
