@@ -97,10 +97,6 @@ This file has the config that has to be loaded before the rest of the minimal-em
                                 :ref nil :depth 1 :inherit ignore
                                 :files (:defaults "elpaca-test.el" (:exclude "extensions"))
                                 :build (:not elpaca-activate)))
-  ;; (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
-  ;;                               :ref "v0.1.0" :depth 1 :inherit ignore
-  ;;                               :files (:defaults "elpaca-test.el" (:exclude "extensions"))
-  ;;                               :build (:not elpaca-activate)))
 
   (let* ((repo  (expand-file-name "elpaca/" elpaca-sources-directory))
          (build (expand-file-name "elpaca/" elpaca-builds-directory))
@@ -141,7 +137,6 @@ This file has the config that has to be loaded before the rest of the minimal-em
   (setopt use-package-always-defer t)
 
   ;; Lock file
-  ;; (setq elpaca-lock-file (expand-file-name "elpaca-lock.eld" minimal-emacs-user-directory))
 #+end_src
 
 * post-init
@@ -256,9 +251,6 @@ the placeholders instead of breaking.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
     ;; Swap Alt (Option) and Super (Command) keys
-    ;; (setq mac-option-modifier 'super)        ; Left Option key becomes Super
-    ;; (setq mac-command-modifier 'meta)        ; Command key becomes Meta (Alt)
-    ;; (setq mac-right-option-modifier 'none)   ; Right Option for special characters
 
     (setq insert-directory-program "/opt/homebrew/bin/gls")
 
@@ -363,10 +355,7 @@ the placeholders instead of breaking.
   ;; code, which overrides `pixel-scroll-precision-mode'. In this case, use the
   ;; following line instead of enabling `pixel-scroll-precision-mode':
   ;;
-  ;; (pixel-scroll-mode t)
   ;;
-  ;; For more details, see:
-  ;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
 
   ;; Display the time in the modeline
   (display-time-mode 1)
@@ -378,7 +367,6 @@ the placeholders instead of breaking.
   (delete-selection-mode 1)
 
   ;; Configure Emacs to ask for confirmation before exiting
-  ;; (setq confirm-kill-emacs 'y-or-n-p)
 
   ;; Automatically hide file details (permissions, size, modification date, etc.)
   ;; in Dired buffers for a cleaner display.
@@ -452,8 +440,6 @@ the placeholders instead of breaking.
 *** Non-Android
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when (not my-phone-p)
-    ;; (add-to-list 'default-frame-alist '(height . 55))
-    ;; (add-to-list 'default-frame-alist '(width . 160))
     (scroll-bar-mode 1)
     (display-time-mode -1)
     (use-package ef-themes
@@ -471,7 +457,6 @@ the placeholders instead of breaking.
       (ef-themes-mixed-fonts t)
       (ef-themes-variable-pitch-ui t)
       ;; :hook ((ef-themes-post-load . my-ef-themes-mode-line))
-      ;; (ef-themes-post-load . fontaine-apply-current-preset)
       :config
       (defun my-ef-themes-mode-line ()
         "Tweak the style of the mode lines."
@@ -493,13 +478,6 @@ the placeholders instead of breaking.
       :ensure t
       :demand t
       :config
-      ;; (setopt modus-themes-variable-pitch-ui t)
-      ;; modus-themes-common-palette-overrides
-      ;; '((fringe unspecified)
-      ;;   (bg-tab-bar bg-main)
-      ;;   (bg-tab-current bg-cyan-intense)
-      ;;   (bg-tab-other bg-inactive)
-      ;;   )
 
       (modus-themes-include-derivatives-mode 1)
       (setopt modus-themes-to-rotate '(ef-maris-dark ef-elea-dark ef-winter ef-duo-dark ef-maris-light ef-elea-light ef-spring))
@@ -507,22 +485,11 @@ the placeholders instead of breaking.
       (defun my/custom-faces (&rest _)
         (custom-set-faces
          '(region ((t :extend nil))))      
-        ;; (set-face-font 'default "IBM Plex Mono-16")
-        ;; (set-face-font 'default "Aporetic Sans Mono-17")
-        ;; (set-face-font 'variable-pitch "Inter-15")
-        ;; (set-face-font 'default "Berkeley Mono-15")
         (set-face-attribute 'default nil :family "JetBrainsMono Nerd Font" :height 140)
-        ;; (set-face-attribute 'bold nil :weight 'regular)
         )
       (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
       
-      ;; (defun my/mac-apply-theme (appearance)
-      ;;   "Load theme, taking current system APPEARANCE into consideration."
-      ;;   (pcase appearance
-      ;;     ('light (modus-themes-load-theme 'modus-operandi-tinted))
-      ;;     ('dark (modus-themes-load-theme 'modus-vivendi-tinted))))
 
-      ;; (add-hook 'ns-system-appearance-change-functions #'my/mac-apply-theme)
       (modus-themes-load-theme 'ef-maris-dark)
       )
 
@@ -533,7 +500,6 @@ the placeholders instead of breaking.
     (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
     (add-to-list 'default-frame-alist '(ns-appearance . dark))
 
-    ;; (use-package calle24 :demand t)
     )
 #+end_src
 *** Linux
@@ -734,7 +700,6 @@ from the Phone block via =material-pbm-icons= (see below). Design:
     :bind (("C-c C-=" . olivetti-mode))
     :custom
     (olivetti-style 'fancy)
-    ;; (olivetti-fringe '(:background "#e5e5e5"))
     )
 #+end_src
 ** Tool Bar
@@ -742,7 +707,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 
 #+begin_src emacs-lisp :tangle "post-init.el"
   (setq tool-bar-style 'image)
-  ;; (tool-bar-mode 1)
   (use-package tool-bar+
     :ensure (:host github :repo "emacsmirror/tool-bar-plus")
     )
@@ -765,7 +729,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   ;; be dragged with the mouse, thus allowing you to easily resize adjacent
   ;; windows.
   ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
-  ;; (add-hook 'after-init-hook #'window-divider-mode)
 
 #+END_SRC
 ** Completion in region and at point
@@ -877,7 +840,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     :bind (;; C-c bindings in `mode-specific-map'
            ("C-c M-x" . consult-mode-command)
            ("C-c h" . consult-history)
-           ;; ("C-c k" . consult-kmacro)
            ("C-c M" . consult-man)
            ("C-c I" . consult-info)
            ([remap Info-search] . consult-info)
@@ -1057,7 +1019,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       (unless (find-font (font-spec :name "Symbols Nerd Font Mono"))
         (nerd-icons-install-fonts t)))
     )
-  ;; (use-package hide-mode-line :demand t) - replaced with built-in mode-line-invisible-mode (emacs 31)
 
 #+end_src
 ** Tabs
@@ -1093,8 +1054,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
        ("o" ,(sj/sync "docs/org/")        "GTD Org")
        ("c" "~/.emacs.d/"                 "Config")))
     :config
-    ;; (dirvish-peek-mode) ; Preview files in minibuffer
-    ;; (dirvish-side-follow-mode) ; similar to `treemacs-follow-mode'
     (setq dirvish-mode-line-format
           '(:left (sort symlink) :right (omit yank index)))
     (setq dirvish-attributes
@@ -1102,7 +1061,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (setq delete-by-moving-to-trash t)
     (setq dired-listing-switches
           "-l --almost-all --human-readable --group-directories-first --no-group")
-    ;; (evil-make-overriding-map dirvish-mode-map 'normal)
     :bind ; Bind `dirvish|dirvish-side|dirvish-dwim' as you see fit
     (("C-c f" . dirvish)
      :map dirvish-mode-map ; Dirvish inherits `dired-mode-map'
@@ -1126,19 +1084,15 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 #+end_src
 ** Shell and Terminals
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;; (defun bb/setup-term-mode ()
-  ;;   (evil-local-set-key 'insert (kbd "C-r") 'bb/send-C-r))
 
   (defun bb/send-C-r ()
     (interactive)
     (term-send-raw-string "\C-r"))
 
-  ;; (add-hook 'term-mode-hook 'bb/setup-term-mode)
 
   (when (or my-linux-p my-mac-p)
     (use-package vterm
       :config
-      ;;(setopt vterm-buffer-name-string "vterm/%s")
       )
     (use-package ghostel
       :demand t
@@ -2103,13 +2057,9 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
   (add-hook 'org-capture-after-finalize-hook #'prot-window-delete-popup-frame)
 
-  ;; (declare-function tmr "tmr" (time &optional description acknowledgep))
-  ;; (defvar tmr-timer-created-functions)
 
   ;;;###autoload (autoload 'prot-window-popup-tmr "prot-window")
-  ;; (prot-window-define-with-popup-frame tmr)
 
-  ;; (add-hook 'tmr-timer-created-functions #'prot-window-delete-popup-frame)C
 #+END_SRC
 
 #+BEGIN_SRC emacs-lisp :tangle "post-init.el"
@@ -2207,7 +2157,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (add-hook 'howm-mode-hook #'howm-mode-set-buffer-name)
     (add-hook 'after-save-hook #'howm-mode-set-buffer-name)
 
-    ;; (add-hook 'howm-mode-hook #'tab-line-mode)
     (setopt howm-view-title-regexp
             "^#?\\+?[tT][iI][tT][lL][eE]:\\( +\\(.*\\)\\|\\)$")
     (setopt howm-view-title-regexp-grep "^(#?\\+?[tT][iI][tT][lL][eE]:) +")
@@ -2238,7 +2187,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
     ;; Advise `howm-view-item-summary' so that it removes the "#+title: "
     ;; portion of note titles.
-    ;; (defvar howm-view-title-regexp)
     (defun my/howm-cut-title (str)
       "Remove `howm-view-title-header' plus whitespace from STR."
       (let ((begin (when (string-match howm-view-title-regexp str)
@@ -2417,10 +2365,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 #+END_SRC
 ** File tree
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (use-package speedbar
-    :ensure nil
-    :custom
-    (speedbar-prefer-window t))
   (when (not my-phone-p)
     (use-package treemacs
       :init
@@ -2487,8 +2431,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   (defun my/org-present-start ()
     (org-present-big)
     (org-display-inline-images)
-    ;; (org-present-hide-cursor)
-    ;; (org-present-read-only)
     (setq header-line-format " ")
     (mode-line-invisible-mode 1)
     (scroll-bar-mode -1)
@@ -2499,8 +2441,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   (defun my/org-present-end ()
     (org-present-small)
     (org-remove-inline-images)
-    ;; (org-present-show-cursor)
-    ;; (org-present-read-write)
     (setq header-line-format nil)
     (mode-line-invisible-mode -1)
     (scroll-bar-mode 1)
@@ -2519,7 +2459,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (org-show-entry)
     ;; Show only direct subheadings of the slide but don't expand them
     (org-show-children))
-  ;; (add-hook 'org-present-after-navigate-functions 'my/org-present-prepare-slide)
 #+end_src
 
 ** Eglot
@@ -2723,7 +2662,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
          (t (message "herdr: lantern is at %s, but Emacs could not attach"
                      pane)))))
 
-    ;; (keymap-global-set "C-c L" #'my/herdr-lantern)
 
     (use-package inheritenv
       :demand t
@@ -2865,9 +2803,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   (when my-windows-p
     (use-package ahk-mode))
   (use-package php-mode)
-  ;; (use-package jsonnet-mode)
-  ;; (use-package hierarchy)
-  (use-package tree-mode)
   (use-package json-navigator)
   (when (not my-phone-p)
     (use-package pet
@@ -2901,10 +2836,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (add-to-list
      'load-path (car (file-expand-wildcards
                       "/Program Files/Erlang OTP/lib/tools-*/emacs"))))
-  ;; (when my-mac-p
-  ;;   (add-to-list
-  ;;    'load-path (car (file-expand-wildcards
-  ;;                     "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
   (when (not my-phone-p)
     ;; erlang-ts derives erlang-ts-mode from erlang-mode and requires erlang
     ;; itself, so it needs no `:after erlang' -- that only deferred it forever,
@@ -2917,8 +2848,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (use-package eglot
       :ensure nil
       :config
-      ;;(add-to-list 'eglot-server-programs
-      ;;             (erlang-mode . ("elp" "--log-file" "elp.log" "server")))
       (add-to-list 'eglot-server-programs
                    '((kotlin-ts-mode kotlin-mode) . ("kotlin-lsp" "--stdio")))
       )
@@ -3349,11 +3278,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
       	           :files ("*.el" "render-core.so")
       	           :pre-build ("make" "all"))))
-  ;;  (when my-mac-p
-  ;;    (use-package reader
-  ;;      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
-  ;;    	               :files ("*.el" "render-core.dylib")
-  ;;    	               :pre-build ("make" "all"))))
 #+end_src
 ** Social and Browser
 *** EWW Browser
@@ -4031,7 +3955,6 @@ article text.  With no search buffer there is nothing to redraw."
       ;; browser.  If Grid starts rejecting calls on UA grounds, that is the first
       ;; thing to revert -- test with scratchpad/ws-test.mjs before changing it.
       (setq slack-request-curl-options (list "--user-agent" "emacs-slack"))
-      ;;(setq slack-extra-subscribed-channels (mapcar 'intern (list "team-vanguard")))
 
       ;; ---- Enterprise Grid: connect without rtm.connect ----------------------
       ;; Our org is on Slack Enterprise Grid, which blocks the rtm.connect method
@@ -4211,7 +4134,6 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
                           :host "work-slack"
                           :user "enterprise")
        )))
-  ;; (elpaca--configure-remotes (elpaca-get 'slack))
   (use-package alert
     :demand t
     :commands (alert)
@@ -4346,12 +4268,6 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
   (use-package github-explorer
     :commands (github-explorer-repo-from-url)
     :init
-    ;; (github-explorer (github-explorer-repo-from-url "https://github.com/srijan/emacs-v4"))
-    ;;(sj-browse-url-set-handler-rx
-    ;; 'github
-    ;; '((seq line-start "http" (zero-or-one "s") "://github.com/" (one-or-more anychar)))
-    ;; (lambda (url &optional _new-window)
-    ;;   (github-explorer (github-explorer-repo-from-url url))))
     )
 
 #+end_src
