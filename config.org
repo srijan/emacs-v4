@@ -1205,14 +1205,24 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 #+end_src
 ** Modeline
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;; (use-package moody
-  ;;   :demand t
-  ;;   :config
-  ;;   (moody-replace-mode-line-front-space)
-  ;;   (moody-replace-mode-line-buffer-identification)
-  ;;   (moody-replace-vc-mode))
-  (use-package moody
+  (use-package sleek-modeline
     :demand t
+    :custom
+    (sleek-modeline-size 'medium)
+    :config
+    (defun my-sleek-modeline-hide-line-ending ()
+      "Hide the sleek-modeline line-ending segment."
+      nil)
+    (sleek-modeline-register-segment
+     'line-ending
+     :fn 'my-sleek-modeline-hide-line-ending
+     :side 'right
+     :priority 10
+     :separator t)
+    (sleek-modeline-mode 1))
+
+  (use-package moody
+    :disabled
     :config
     (setq x-underline-at-descent-line t)
 
