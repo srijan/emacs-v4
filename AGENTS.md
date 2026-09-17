@@ -10,6 +10,7 @@ Literate config: `config.org` is the only source. `README.md` covers install, se
 - Naming: new code uses `sj-`; `sj/` is the secrets layer (`sj/load-private`, `sj/sync`, the `sj/…` placeholder variables); `my/` and `my-` are older and still live. Prefer `setopt` for user options.
 - Personal identifiers (emails, hosts, employer, sync paths) never go into `config.org`. Use the `sj/...` placeholder variables set from `private.json.age` in "Private variables (age)".
 - Machine-specific code is guarded by `my-phone-p` (Android) or `system-type`; keep the config loadable on all three platforms.
+- To skip a whole package on Android, put `:install-if (not my-phone-p)` in its `use-package` block — a custom keyword (section "The :install-if use-package keyword") that, unlike the built-in `:if`/`:when`/`:unless`, also stops elpaca cloning and building it. Use `(when (not my-phone-p) ...)` only when the guard covers more than `use-package` forms.
 - URL routing: `sj-browse-url-set-handler` / `sj-browse-url-set-handler-rx` (section "Social and Browser") is the single dispatcher that sends reddit, HN, mastodon, and Jira links to in-Emacs viewers. New link handlers register there, not by overriding `browse-url-browser-function`.
 - `srijan-lisp/` is gitignored. Two files tangle from `config.org`; the rest (`gkeep-to-org.el`, `slack-inbox.el`, `slack-saved-to-org.el`, `materialized-theme.el`) are hand-written and have no versioned copy in this repo, so edits there do not show in `git diff`.
 
