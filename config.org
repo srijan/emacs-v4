@@ -5418,6 +5418,32 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :demand t
     :config
     (define-key elfeed-search-mode-map (kbd "=") elfeed-score-map)
+    (define-key elfeed-show-mode-map (kbd "=") elfeed-score-map)
+
+    (defun sj-elfeed-score-selected-show-entry (orig &optional ignore-region)
+      "Let `elfeed-search-selected' see the entry of an `elfeed-show-mode' buffer.
+`elfeed-score-set-score', `-get-score', `-score' and `-explain' find their
+entry through `elfeed-search-selected', which only reads the search buffer;
+the rule-adding commands already consult `elfeed-show-entry' themselves."
+      (if (and (derived-mode-p 'elfeed-show-mode) elfeed-show-entry)
+          (if ignore-region elfeed-show-entry (list elfeed-show-entry))
+        (funcall orig ignore-region)))
+    (advice-add 'elfeed-search-selected :around
+                #'sj-elfeed-score-selected-show-entry)
+
+    (defun sj-elfeed-search-update-entry-in-search-buffer (orig &rest entries)
+      "Redraw ENTRIES in the search buffer, and only there.
+`elfeed-search--update-line' rewrites the line at point in the current
+buffer, so calling it from an `elfeed-show-mode' buffer would clobber the
+article text.  With no search buffer there is nothing to redraw."
+      (when-let* ((buffer (or (get-buffer "*elfeed-search*")
+                              (and (derived-mode-p 'elfeed-search-mode)
+                                   (current-buffer)))))
+        (with-current-buffer buffer
+          (apply orig entries))))
+    (advice-add 'elfeed-search-update-entry :around
+                #'sj-elfeed-search-update-entry-in-search-buffer)
+
     (elfeed-score-enable))
 
 #+END_SRC
