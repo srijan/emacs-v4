@@ -2163,10 +2163,13 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
         (when (fboundp 'jinx-mode) (jinx-mode -1))
         (set-buffer-modified-p nil)
         (goto-char (point-min)))
-      ;; Display it too, and return it: `initial-buffer-choice' only needs the
-      ;; buffer back, but `M-x sj-home' and a key binding would otherwise
-      ;; render into a buffer you never see.
-      (pop-to-buffer-same-window buf)))
+      ;; Display only when a human asked.  `initial-buffer-choice' just wants
+      ;; the buffer back -- both startup.el and server.el switch to it
+      ;; themselves -- and server.el consults it on every `emacsclient' with
+      ;; no file, so displaying here would yank whatever window is current.
+      (when (called-interactively-p 'interactive)
+        (pop-to-buffer-same-window buf))
+      buf))
 
   ;; `C-c J' visits the mindwtr file itself; lowercase opens the dashboard.
   (keymap-global-set "C-c j" #'sj-home)
