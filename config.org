@@ -2814,7 +2814,11 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :after org
     :config
     (edraw-org-setup-default))
-  (use-package uniline :demand t)
+  (use-package uniline
+    :demand t
+    :bind ("C-|" . uniline-mode)
+    :init
+    (setopt uniline-key-insert '("<prior>")))
 
 #+END_SRC
 ** Erlang & LSP
