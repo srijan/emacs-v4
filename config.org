@@ -2918,10 +2918,11 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   ;;    'load-path (car (file-expand-wildcards
   ;;                     "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
   (when (not my-phone-p)
-    ;; The erlang package is retired (see config-old.org); erlang-ts below still says :after erlang.
+    ;; erlang-ts derives erlang-ts-mode from erlang-mode and requires erlang
+    ;; itself, so it needs no `:after erlang' -- that only deferred it forever,
+    ;; since nothing ever provided the feature.  Elpaca installs erlang as a
+    ;; declared dependency; loading erlang-ts pulls it in.
     (use-package erlang-ts
-      :demand t
-      :after erlang
       :mode ("\\.erl\\'" . erlang-ts-mode))
     (use-package elixir-mode)
 
