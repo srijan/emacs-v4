@@ -1501,7 +1501,8 @@ One alternative can be to have a separate script to copy the required passwords 
     
     :config
 
-    (mindwtr-auto-sync-mode 1)
+    ;; Phone: no save-debounce/periodic/focus sync; `C-c S' still syncs by hand.
+    (mindwtr-auto-sync-mode (if my-phone-p -1 1))
     (mindwtr-agenda-setup)
 
     :bind
