@@ -2907,7 +2907,9 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 ** Hyperbole / Dashboard
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package hyperbole
-    :demand t)
+    :demand t
+    :config
+    (hyperbole-mode 1))
 
   ;;;; Dashboard action commands (also usable from M-x and the Android tool bar)
 
