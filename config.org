@@ -1868,27 +1868,77 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   ;; Declared special here so that the `let' in `org-dblock-write:sj-agenda'
   ;; binds them dynamically even when this file is compiled (by hand or by
   ;; native-comp's JIT) before `org-agenda' has been loaded.  Without this
-  ;; the bindings are lexical, the agenda quietly ignores them, and you get
-  ;; a week's agenda in a new window instead of one day inline.
+  ;; the bindings are lexical, the agenda quietly ignores them, and the build
+  ;; lands in a new window and in the user's own `*Org Agenda*'.
   (defvar org-agenda-window-setup)
-  (defvar org-agenda-span)
   (defvar org-agenda-sticky)
+  (defvar org-agenda-buffer-name)
+  (defvar org-agenda-block-separator)
 
-  (defun org-dblock-write:sj-agenda (params)
-    "Insert today's agenda as plain text.  PARAMS may hold :span."
-    (insert (save-window-excursion
-              (let ((org-agenda-window-setup 'current-window)
-                    (org-agenda-span (or (plist-get params :span) 1))
-                    (org-agenda-sticky nil))
-                (org-agenda-list)
-                (prog1 (buffer-substring-no-properties (point-min) (point-max))
-                  (org-agenda-quit))))))
+  (defun sj-home-visit (file pos)
+    "Visit FILE at POS and unfold the entry there.  Target of the row links."
+    (find-file file)
+    (widen)
+    (goto-char pos)
+    (org-fold-show-context 'agenda))
+
+  (defun sj-home--linkify-rows ()
+    "Rewrite every agenda row in this buffer as an Org link to its entry.
+  Org\\='s own `org-marker\\=' cannot be copied out of an agenda buffer -- it kills
+  its markers from `kill-buffer-hook\\=' (`org-agenda-reset-markers\\=') -- so each
+  row carries its file and position in an elisp link instead.  Being links is
+  what makes the rows behave like the rest of the dashboard: TAB reaches them,
+  RET and Hyperbole\\='s M-RET follow them, and a tap follows them on the phone.
+
+  The leading indentation stays outside the link so the agenda\\='s columns still
+  line up, and `org-link-make-string\\=' guards the description against the
+  square brackets of a priority cookie."
+    (let ((inhibit-read-only t))
+      (save-excursion
+        (goto-char (point-min))
+        (while (not (eobp))
+          (when-let* ((m (or (org-get-at-bol 'org-hd-marker)
+                             (org-get-at-bol 'org-marker)))
+                      (file (buffer-file-name (marker-buffer m)))
+                      (pos (marker-position m)))
+            (back-to-indentation)
+            (let ((text (buffer-substring-no-properties
+                         (point) (line-end-position))))
+              (delete-region (point) (line-end-position))
+              (insert (org-link-make-string
+                       (format "elisp:(sj-home-visit %S %d)" file pos)
+                       text))))
+          (forward-line 1)))))
+
+  (defun org-dblock-write:sj-agenda (_params)
+    "Insert the head of the Mindwtr Engage view: Today and Today\\='s Focus.
+  The spec is `mindwtr-agenda--engage-spec\\=' itself, trimmed to the first two
+  of its five blocks, so these rows cannot drift from what `mindwtr-engage\\='
+  shows.  The build goes to a scratch buffer, because `org-agenda-quit\\=' kills
+  the buffer it built in -- which otherwise takes the user\\='s own
+  `*Org Agenda*\\=' with it."
+    (require 'mindwtr-agenda)
+    (pcase-let ((`(,key ,desc ,blocks) (mindwtr-agenda--engage-spec)))
+      (insert (save-window-excursion
+                (let ((org-agenda-window-setup 'current-window)
+                      (org-agenda-sticky nil)
+                      (org-agenda-buffer-name " *sj-agenda*")
+                      ;; A character separator is repeated to the width of
+                      ;; whatever window is current, which here is not the
+                      ;; dashboard's -- a 300-column rule that wraps four
+                      ;; times.  A string is inserted as-is, so "" is the
+                      ;; blank line between blocks without the rule.
+                      (org-agenda-block-separator ""))
+                  (mindwtr-agenda--open (list key desc (seq-take blocks 2)))
+                  (sj-home--linkify-rows)
+                  (prog1 (buffer-substring-no-properties (point-min) (point-max))
+                    (org-agenda-quit)))))))
 
   (defun org-dblock-write:sj-herdr (_params)
     "Insert one line per herdr pane that has an agent in it.
-  Rows link to `herdr-pane-focus\=', which moves the server\='s focus as well as
-  attaching and showing the buffer.  The not-loaded button uses `herdr-start\='
-  rather than `herdr\=', which would open the dispatcher over this buffer."
+  Rows link to `herdr-pane-focus\\=', which moves the server\\='s focus as well as
+  attaching and showing the buffer.  The not-loaded button uses `herdr-start\\='
+  rather than `herdr\\=', which would open the dispatcher over this buffer."
     (if (not (featurep 'herdr-state))
         (insert "not loaded -- [[elisp:(herdr-start)][start herdr]], then g\n")
       (if-let* ((state (herdr-state-current))
@@ -1972,6 +2022,18 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     "q" #'quit-window
     "TAB" #'org-next-link
     "<backtab>" #'org-previous-link)
+
+  (defun sj-home--drop-desktop-sections ()
+    "Delete the subtrees tagged :desktop: in the current buffer.
+  The home template carries every section; the phone drops the ones that have
+  nothing to show there, so which sections those are stays in the template."
+    (save-excursion
+      (goto-char (point-max))
+      ;; Backwards: each deletion only moves text below the point we resume from.
+      (while (re-search-backward org-outline-regexp-bol nil t)
+        (when (member "desktop" (org-get-tags nil t))
+          (delete-region (point)
+                         (save-excursion (org-end-of-subtree t t) (point)))))))
 
   (defun sj-home-edit ()
     "Visit the template behind the home screen."
