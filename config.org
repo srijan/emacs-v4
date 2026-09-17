@@ -3801,10 +3801,29 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (editorconfig-mode 1)
   (use-package markdown-mode
-    :mode ("README\\.md\\'" . gfm-mode)
     :init (setq markdown-command '("pandoc" "--from=markdown" "--to=html5"))
     :bind (:map markdown-mode-map
                 ("M-n" . nil)))
+
+  ;; Use Emacs's Tree-sitter Markdown mode for Markdown files.  The
+  ;; `markdown' and `markdown-inline' grammars must both be installed.
+  (use-package markdown-ts-mode
+    :ensure nil
+    :mode ("\\.md\\'" "\\.markdown\\'")
+    :custom
+    (markdown-ts-table-auto-align t))
+
+  ;; Keep Markdown almost rendered in the editable buffer, revealing the
+  ;; source syntax only for the element at point.
+  (use-package markdown-ts-appear
+    :ensure (:host github :repo "Thysrael/markdown-ts-appear")
+    :after markdown-ts-mode
+    :hook (markdown-ts-mode . markdown-ts-appear-mode)
+    :custom
+    (markdown-ts-appear-table-style 'unicode)
+    (markdown-ts-appear-code-fence-style 'connected)
+    (markdown-ts-appear-render-callouts t))
+
   (use-package edit-indirect)
   (use-package json-mode)
   (use-package js
