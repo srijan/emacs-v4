@@ -1304,3 +1304,215 @@ TODO: Need to evaluate how much speedup this gives
     ;; (eaf-bind-key nil "M-q" eaf-browser-keybinding)
     )
 #+end_src
+
+* COMMENT Disabled packages
+
+Use-package blocks that sat in =config.org= carrying =:disabled=: tried, not
+adopted.  =:disabled= makes use-package expand the form to nothing, so unlike the
+retired sections above these did tangle into =post-init.el= -- dead weight in the
+generated file rather than config that ran.
+
+Each heading names the =config.org= section the block came from.  To revive one,
+drop its =:disabled= line and paste it back there.
+
+** Mac Specific
+
+#+begin_src emacs-lisp
+    (use-package emacs-anywhere
+      :disabled
+      :ensure (:host github :repo "nohzafk/emacs-anywhere")
+      :demand t)
+#+end_src
+
+** Looks & Themes -- Generic
+
+#+begin_src emacs-lisp
+  ;; Fast and smooth scrolling
+  (use-package ultra-scroll
+    :disabled
+    :ensure (:host github :repo "jdtsmith/ultra-scroll")
+    :init
+    (setq scroll-conservatively 101 ; important!
+          scroll-margin 0)
+    (setq isearch-allow-scroll 'unlimited)
+    :config
+    (ultra-scroll-mode 1))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package spacious-padding
+    :disabled
+    :demand t
+    :config
+    (setq spacious-padding-subtle-frame-lines 
+          '(:mode-line-active error))
+    (setq spacious-padding-widths
+          '( :internal-border-width 15
+             :header-line-width 2
+             :mode-line-width 6
+             :tab-width 4
+             :right-divider-width 15
+             :scroll-bar-width 8
+             :fringe-width 8))
+    (spacious-padding-mode 1)
+    )
+#+end_src
+
+** Modeline
+
+Five modeline experiments.  =sleek-modeline= plus =minions= is what actually runs.
+
+Read =delight= twice before deleting it: the block is disabled and =(featurep 'delight)=
+is nil, yet =:delight= is still written at six call sites in =config.org= (jinx,
+yasnippet and org-indent among them).  Those keywords resolve to a no-op today.
+Installing delight again would make all six start taking effect.
+
+#+begin_src emacs-lisp
+  (use-package moody
+    :disabled
+    :config
+    (setq x-underline-at-descent-line t)
+
+    (setq-default mode-line-format
+                  '(" "
+                    mode-line-front-space
+                    mode-line-client
+                    mode-line-frame-identification
+                    mode-line-buffer-identification
+                    (:eval
+                     (when (eq major-mode 'image-mode)
+                       ;; imagemagick alternative (also shows type and file size).
+                       ;; (process-lines "identify" "-format" "[%m %wx%h %b]" (buffer-file-name))
+                       (let ((size (image-size (create-image (buffer-file-name) nil nil :scale 1.0) t)))
+                         (list (format "%dx%d" (car size) (cdr size))))))
+                    " "
+                    mode-line-position
+                    (vc-mode vc-mode)
+                    (multiple-cursors-mode mc/mode-line)
+                    " " mode-line-modes
+                    mode-line-misc-info
+                    mode-line-end-spaces))
+
+    (setq global-mode-string (remove 'display-time-string global-mode-string))
+
+    (moody-replace-mode-line-buffer-identification)
+    (moody-replace-vc-mode))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package delight
+    :demand t
+    :disabled)
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package timu-line
+    :disabled
+    :ensure t
+    :demand t
+    :config
+    (timu-line-mode 1))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package doom-modeline
+    :ensure (:host github :repo "seagle0128/doom-modeline")
+    :disabled
+    :demand
+    :init
+    (doom-modeline-mode 1)
+    :custom
+    (doom-modeline-enable-word-count t)
+    (doom-modeline-buffer-encoding nil)
+    (doom-modeline-time-icon nil)
+    (doom-modeline-minor-modes t))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package nano-modeline
+    :disabled
+    :demand
+    :config
+    (setopt mode-line-format nil)
+    (nano-modeline-text-mode t)
+    (add-hook 'prog-mode-hook            #'nano-modeline-prog-mode)
+    (add-hook 'text-mode-hook            #'nano-modeline-text-mode)
+    (add-hook 'org-mode-hook             #'nano-modeline-org-mode)
+    (add-hook 'pdf-view-mode-hook        #'nano-modeline-pdf-mode)
+    (add-hook 'mu4e-headers-mode-hook    #'nano-modeline-mu4e-headers-mode)
+    (add-hook 'mu4e-view-mode-hook       #'nano-modeline-mu4e-message-mode)
+    (add-hook 'mu4e-compose-mode-hook    #'nano-modeline-mu4e-compose-mode)
+    (add-hook 'elfeed-show-mode-hook     #'nano-modeline-elfeed-entry-mode)
+    (add-hook 'elfeed-search-mode-hook   #'nano-modeline-elfeed-search-mode)
+    ;; (add-hook 'elpher-mode-hook          #'nano-modeline-elpher-mode)
+    (add-hook 'term-mode-hook            #'nano-modeline-term-mode)
+    (add-hook 'eat-mode-hook             #'nano-modeline-eat-mode)
+    (add-hook 'xwidget-webkit-mode-hook  #'nano-modeline-xwidget-mode)
+    (add-hook 'messages-buffer-mode-hook #'nano-modeline-message-mode)
+    (add-hook 'org-capture-mode-hook     #'nano-modeline-org-capture-mode)
+    (add-hook 'org-agenda-mode-hook      #'nano-modeline-org-agenda-mode)
+    )
+#+end_src
+
+** File tree
+
+#+begin_src emacs-lisp
+  (use-package treemacs-evil
+    :disabled
+    :after (treemacs evil)
+    :ensure t)
+#+end_src
+
+** Language Modes
+
+#+begin_src emacs-lisp
+  (use-package jupyter :disabled)
+#+end_src
+
+** Erlang & LSP
+
+Both lived inside the =(when (not my-phone-p) ...)= form in that section, which is
+why they are indented one level deeper than the other blocks here.
+
+=erlang-ts= is still live in =config.org= and still declares =:after erlang=.  With
+this block disabled nothing ever requires =erlang-start=, so that feature is never
+provided: =(featurep 'erlang)= and =(featurep 'erlang-ts)= are both nil in the
+running Emacs.  Reviving Erlang means restoring this block, not just erlang-ts.
+
+#+begin_src emacs-lisp
+    (use-package erlang
+      :demand t
+      :disabled
+      :hook ((erlang-mode . display-line-numbers-mode)
+             (erlang-mode . column-number-mode))
+      :custom
+      (erlang-electric-commands '(erlang-electric-comma
+                                  erlang-electric-semicolon
+                                  erlang-electric-gt
+                                  erlang-electric-newline))
+      :init
+      (require 'erlang-start)
+      )
+#+end_src
+
+#+begin_src emacs-lisp
+    (use-package indy
+      :disabled
+      :custom
+      (setq indy-rules
+            '((erlang-mode . (
+                              ;; ((indy--current 'indy--starts-with "]") (indy--prev-tab -1))
+                              ;; ((indy--prev    'indy--ends-on "[")     (indy--prev-tab 1))
+                              ;; ((indy--prev    'indy--ends-on ",")     (indy--prev-tab))
+
+  			                ((and (indy--current 'indy--starts-with "end")
+  				                  (indy--prev 'indy--ends-on ") ->"))      (indy--prev-tab))
+  			                ((indy--current 'indy--starts-with "end") (indy--prev-tab -1))
+  			                ((indy--prev 'indy--ends-on ") ->")       (indy--prev-tab 1))
+  			                ((indy--current 'indy--starts-with "]")   (indy--prev-tab -1))
+  			                ((indy--prev 'indy--ends-on "[")          (indy--prev-tab 1))
+  			                ((indy--prev 'indy--ends-on ",")          (indy--prev-tab))
+  			                ))
+  	        )
+            ))
+#+end_src

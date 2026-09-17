@@ -276,11 +276,6 @@ the placeholders instead of breaking.
       (add-to-list 'exec-path-from-shell-variables "TODOIST_TOKEN")
       (exec-path-from-shell-initialize))
 
-    (use-package emacs-anywhere
-      :disabled
-      :ensure (:host github :repo "nohzafk/emacs-anywhere")
-      :demand t)
-
     (use-package quake-frame
       :demand t
       :ensure (:host codeberg :repo "ctietze/quake-frame.el")
@@ -730,16 +725,6 @@ from the Phone block via =material-pbm-icons= (see below). Design:
 #+end_src
 *** Generic
 #+begin_src emacs-lisp :tangle "post-init.el"
-  ;; Fast and smooth scrolling
-  (use-package ultra-scroll
-    :disabled
-    :ensure (:host github :repo "jdtsmith/ultra-scroll")
-    :init
-    (setq scroll-conservatively 101 ; important!
-          scroll-margin 0)
-    (setq isearch-allow-scroll 'unlimited)
-    :config
-    (ultra-scroll-mode 1))
 
   (use-package emoji
     :ensure nil
@@ -751,22 +736,6 @@ from the Phone block via =material-pbm-icons= (see below). Design:
     :custom
     (olivetti-style 'fancy)
     ;; (olivetti-fringe '(:background "#e5e5e5"))
-    )
-  (use-package spacious-padding
-    :disabled
-    :demand t
-    :config
-    (setq spacious-padding-subtle-frame-lines 
-          '(:mode-line-active error))
-    (setq spacious-padding-widths
-          '( :internal-border-width 15
-             :header-line-width 2
-             :mode-line-width 6
-             :tab-width 4
-             :right-divider-width 15
-             :scroll-bar-width 8
-             :fringe-width 8))
-    (spacious-padding-mode 1)
     )
 #+end_src
 ** Tool Bar
@@ -1081,53 +1050,15 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
      :separator t)
     (sleek-modeline-mode 1))
 
-  (use-package moody
-    :disabled
-    :config
-    (setq x-underline-at-descent-line t)
-
-    (setq-default mode-line-format
-                  '(" "
-                    mode-line-front-space
-                    mode-line-client
-                    mode-line-frame-identification
-                    mode-line-buffer-identification
-                    (:eval
-                     (when (eq major-mode 'image-mode)
-                       ;; imagemagick alternative (also shows type and file size).
-                       ;; (process-lines "identify" "-format" "[%m %wx%h %b]" (buffer-file-name))
-                       (let ((size (image-size (create-image (buffer-file-name) nil nil :scale 1.0) t)))
-                         (list (format "%dx%d" (car size) (cdr size))))))
-                    " "
-                    mode-line-position
-                    (vc-mode vc-mode)
-                    (multiple-cursors-mode mc/mode-line)
-                    " " mode-line-modes
-                    mode-line-misc-info
-                    mode-line-end-spaces))
-
-    (setq global-mode-string (remove 'display-time-string global-mode-string))
-
-    (moody-replace-mode-line-buffer-identification)
-    (moody-replace-vc-mode))
   (use-package minions
     :demand t
     :config
     (minions-mode +1))
 
-  (use-package delight
-    :demand t
-    :disabled)
   (use-package emacs
     :ensure nil
     :delight
     (visual-line-mode))
-  (use-package timu-line
-    :disabled
-    :ensure t
-    :demand t
-    :config
-    (timu-line-mode 1))
   (use-package all-the-icons :demand t)
   (use-package nerd-icons
     :demand t
@@ -1136,41 +1067,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
       (unless (find-font (font-spec :name "Symbols Nerd Font Mono"))
         (nerd-icons-install-fonts t)))
     )
-  (use-package doom-modeline
-    :ensure (:host github :repo "seagle0128/doom-modeline")
-    :disabled
-    :demand
-    :init
-    (doom-modeline-mode 1)
-    :custom
-    (doom-modeline-enable-word-count t)
-    (doom-modeline-buffer-encoding nil)
-    (doom-modeline-time-icon nil)
-    (doom-modeline-minor-modes t))
   ;; (use-package hide-mode-line :demand t) - replaced with built-in mode-line-invisible-mode (emacs 31)
-  (use-package nano-modeline
-    :disabled
-    :demand
-    :config
-    (setopt mode-line-format nil)
-    (nano-modeline-text-mode t)
-    (add-hook 'prog-mode-hook            #'nano-modeline-prog-mode)
-    (add-hook 'text-mode-hook            #'nano-modeline-text-mode)
-    (add-hook 'org-mode-hook             #'nano-modeline-org-mode)
-    (add-hook 'pdf-view-mode-hook        #'nano-modeline-pdf-mode)
-    (add-hook 'mu4e-headers-mode-hook    #'nano-modeline-mu4e-headers-mode)
-    (add-hook 'mu4e-view-mode-hook       #'nano-modeline-mu4e-message-mode)
-    (add-hook 'mu4e-compose-mode-hook    #'nano-modeline-mu4e-compose-mode)
-    (add-hook 'elfeed-show-mode-hook     #'nano-modeline-elfeed-entry-mode)
-    (add-hook 'elfeed-search-mode-hook   #'nano-modeline-elfeed-search-mode)
-    ;; (add-hook 'elpher-mode-hook          #'nano-modeline-elpher-mode)
-    (add-hook 'term-mode-hook            #'nano-modeline-term-mode)
-    (add-hook 'eat-mode-hook             #'nano-modeline-eat-mode)
-    (add-hook 'xwidget-webkit-mode-hook  #'nano-modeline-xwidget-mode)
-    (add-hook 'messages-buffer-mode-hook #'nano-modeline-message-mode)
-    (add-hook 'org-capture-mode-hook     #'nano-modeline-org-capture-mode)
-    (add-hook 'org-agenda-mode-hook      #'nano-modeline-org-agenda-mode)
-    )
 
 #+end_src
 ** Tabs
@@ -2556,10 +2453,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
           ("M-0"       . treemacs-select-window)
           ("C-x M-0"   . my-treemacs-toggle))
     )
-  (use-package treemacs-evil
-    :disabled
-    :after (treemacs evil)
-    :ensure t)
 
   (use-package treemacs-icons-dired
     :hook (dired-mode . treemacs-icons-dired-enable-once)
@@ -2992,7 +2885,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :config
     (add-hook 'python-base-mode-hook 'pet-mode -10))
   (use-package fish-mode)
-  (use-package jupyter :disabled)
   (use-package edraw-org
     :ensure (:host github :repo "misohena/el-easydraw")
     :after org
@@ -3026,42 +2918,11 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   ;;    'load-path (car (file-expand-wildcards
   ;;                     "/opt/homebrew/opt/erlang/lib/erlang/lib/tools-*/emacs"))))
   (when (not my-phone-p)
-    (use-package erlang
-      :demand t
-      :disabled
-      :hook ((erlang-mode . display-line-numbers-mode)
-             (erlang-mode . column-number-mode))
-      :custom
-      (erlang-electric-commands '(erlang-electric-comma
-                                  erlang-electric-semicolon
-                                  erlang-electric-gt
-                                  erlang-electric-newline))
-      :init
-      (require 'erlang-start)
-      )
+    ;; The erlang package is retired (see config-old.org); erlang-ts below still says :after erlang.
     (use-package erlang-ts
       :demand t
       :after erlang
       :mode ("\\.erl\\'" . erlang-ts-mode))
-    (use-package indy
-      :disabled
-      :custom
-      (setq indy-rules
-            '((erlang-mode . (
-                              ;; ((indy--current 'indy--starts-with "]") (indy--prev-tab -1))
-                              ;; ((indy--prev    'indy--ends-on "[")     (indy--prev-tab 1))
-                              ;; ((indy--prev    'indy--ends-on ",")     (indy--prev-tab))
-
-  			                ((and (indy--current 'indy--starts-with "end")
-  				                  (indy--prev 'indy--ends-on ") ->"))      (indy--prev-tab))
-  			                ((indy--current 'indy--starts-with "end") (indy--prev-tab -1))
-  			                ((indy--prev 'indy--ends-on ") ->")       (indy--prev-tab 1))
-  			                ((indy--current 'indy--starts-with "]")   (indy--prev-tab -1))
-  			                ((indy--prev 'indy--ends-on "[")          (indy--prev-tab 1))
-  			                ((indy--prev 'indy--ends-on ",")          (indy--prev-tab))
-  			                ))
-  	        )
-            ))
     (use-package elixir-mode)
 
     (use-package eglot
