@@ -1360,12 +1360,22 @@ drop its =:disabled= line and paste it back there.
 
 ** Modeline
 
-Five modeline experiments.  =sleek-modeline= plus =minions= is what actually runs.
+Five modeline experiments.  =sleek-modeline= is what actually runs.
 
-Read =delight= twice before deleting it: the block is disabled and =(featurep 'delight)=
-is nil, yet =:delight= is still written at six call sites in =config.org= (jinx,
-yasnippet and org-indent among them).  Those keywords resolve to a no-op today.
-Installing delight again would make all six start taking effect.
+=minions= joined them afterwards, and for the same reason: =sleek-modeline= builds its
+own =mode-line-format= out of project, buffer name and major mode, with no minor-mode
+segment at all.  Neither =mode-line-modes= nor =minions-mode-line-modes= appears in it,
+so =minions-mode= was on and acting on nothing.
+
+=delight= is the same story from the other end.  Its block was disabled and the package
+never installed, so the six =:delight= keywords that used to sit in =config.org= were
+inert -- Emacs 31 ships =use-package-delight.el=, whose handler wraps the call in
+=(if (fboundp 'delight) ...)=, so they raised no error either.  All six asked only to
+hide a lighter, and there is no lighter on screen to hide.  They were removed rather
+than revived.
+
+Reviving any modeline here that does render =mode-line-modes= brings both back into
+play: install =delight= and re-add the keywords, or turn =minions-mode= back on.
 
 #+begin_src emacs-lisp
   (use-package moody
@@ -1452,6 +1462,13 @@ Installing delight again would make all six start taking effect.
     (add-hook 'org-capture-mode-hook     #'nano-modeline-org-capture-mode)
     (add-hook 'org-agenda-mode-hook      #'nano-modeline-org-agenda-mode)
     )
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package minions
+    :demand t
+    :config
+    (minions-mode +1))
 #+end_src
 
 ** File tree

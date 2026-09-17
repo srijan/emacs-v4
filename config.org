@@ -412,7 +412,6 @@ the placeholders instead of breaking.
 
   (use-package which-key
     :ensure nil ; builtin
-    :delight
     :defer t
     :commands which-key-mode
     :hook (after-init . which-key-mode)
@@ -1050,15 +1049,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
      :separator t)
     (sleek-modeline-mode 1))
 
-  (use-package minions
-    :demand t
-    :config
-    (minions-mode +1))
-
-  (use-package emacs
-    :ensure nil
-    :delight
-    (visual-line-mode))
   (use-package all-the-icons :demand t)
   (use-package nerd-icons
     :demand t
@@ -1296,7 +1286,6 @@ One alternative can be to have a separate script to copy the required passwords 
   (use-package org
     :ensure nil
     :demand t
-    :delight org-indent-mode
     :custom
     (org-support-shift-select t)
     (org-ellipsis "…")
@@ -2477,7 +2466,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     ;; Jinx compiles a C module on first load; Android has no C compiler, so it
     ;; errors and can abort org-capture (text-mode -> org-mode -> jinx-mode).
     :if (not my-phone-p)
-    :delight
     :hook (text-mode . jinx-mode)
     :bind ("M-$" . jinx-correct)
     )
@@ -2548,10 +2536,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (eglot-connect-timeout 60)
     (eglot-autoreconnect t)
     )
-
-  (use-package eldoc
-    :ensure nil
-    :delight)
 #+end_src
 ** AI Assistants
 *** gptel
@@ -2897,7 +2881,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package yasnippet
     :demand t
-    :delight (yas-minor-mode)
     :custom
     (yas-snippet-dirs (list (expand-file-name "snippets" minimal-emacs-user-directory)))
     :config
