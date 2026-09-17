@@ -667,7 +667,7 @@ from the Phone block via =material-pbm-icons= (see below). Design:
   ;; Each slot carries its own Material Design Icon name, so adding, removing
   ;; or reordering a slot is a one-line edit here.
   (defcustom android-support-global-tool-bar-slots
-    '((dashboard-open                       . "view-dashboard-outline")
+    '((sj-home                              . "view-dashboard-outline")
       (org-capture-inbox                    . "inbox-arrow-down-outline")
       (mindwtr-engage                       . "calendar-check-outline")
       (denote-journal-new-or-existing-entry . "notebook-outline")
@@ -1784,6 +1784,9 @@ One alternative can be to have a separate script to copy the required passwords 
         (if (org-clocking-p)
             (insert (org-clock-get-clock-string))
           (insert "No Task"))))
+    ;; Cancel first: this block is re-evaluated on every config reload, and a
+    ;; bare `run-with-timer' stacks up another copy each time.
+    (cancel-function-timers 'current-clock-time-to-file)
     (run-with-timer 1 60 'current-clock-time-to-file)
     (add-hook 'org-clock-in-hook 'current-clock-time-to-file)
     (add-hook 'org-clock-out-hook 'current-clock-time-to-file)
@@ -1972,7 +1975,7 @@ One alternative can be to have a separate script to copy the required passwords 
      ("C-c d p" . mindwtr-projects)
      ("C-c d k" . mindwtr-clarify)
      ("C-c i"   . org-capture-inbox)
-     ("C-c j"   . mindwtr-open)
+     ("C-c J"   . mindwtr-open)
      ("C-c l"   . org-store-link)
      ("C-c S"   . mindwtr-sync)))
 
@@ -2920,11 +2923,6 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (let ((use-dialog-box (display-graphic-p)))
       (y-or-n-p prompt)))
 
-  (defun sj-dashboard-visit-config ()
-    "Visit config.org."
-    (interactive)
-    (find-file (expand-file-name "config.org" minimal-emacs-user-directory)))
-
   (defun sj-dashboard-visit-mindwtr ()
     "Visit mindwtr.org in the sync folder."
     (interactive)
@@ -2944,91 +2942,169 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       (let ((default-directory minimal-emacs-user-directory))
         (async-shell-command "git pull" "*emacs-repo-pull*"))))
 
-  (use-package dashboard
-    :ensure (:host github :repo "emacs-dashboard/dashboard")
-    :demand t
-    :disabled
-    :custom
-    ;; No agenda section: a full `org-map-entries' scan of the agenda files
-    ;; costs ~1s at every startup.  Today's agenda is one tap away instead
-    ;; (the Agenda button below, and tool-bar slot 3 on Android).
-    (dashboard-items '((recents . 5) (bookmarks . 5)))
-    (dashboard-center-content t)
-    (dashboard-set-footer nil)
-    ;; The default `dashboard-startupify-list' does NOT include the navigator,
-    ;; so `dashboard-navigator-buttons' would never be rendered.  Add it.
-    (dashboard-startupify-list '(dashboard-insert-banner
-                                 dashboard-insert-newline
-                                 dashboard-insert-banner-title
-                                 dashboard-insert-newline
-                                 dashboard-insert-navigator
-                                 dashboard-insert-newline
-                                 dashboard-insert-init-info
-                                 dashboard-insert-items
-                                 dashboard-insert-newline
-                                 dashboard-insert-footer))
-    :config
-    ;; Icons: skip file/heading icons on the phone (they need an icon font).
-    ;; Guarded so a missing icon package can never abort startup.
-    (condition-case err
-        (if my-phone-p
-            (setq dashboard-set-file-icons nil
-                  dashboard-set-heading-icons nil)
-          (cond
-           ((require 'nerd-icons nil t)
-            (setq dashboard-icon-type 'nerd-icons
-                  dashboard-display-icons-p t
-                  dashboard-set-file-icons t
-                  dashboard-set-heading-icons t))
-           ((require 'all-the-icons nil t)
-            (setq dashboard-icon-type 'all-the-icons
-                  dashboard-display-icons-p t
-                  dashboard-set-file-icons t
-                  dashboard-set-heading-icons t))
-           (t
-            (setq dashboard-set-file-icons nil
-                  dashboard-set-heading-icons nil))))
-      (error (message "dashboard icons: %s" (error-message-string err))))
+  ;;;; Dashboard
+  ;; A plain Org file rendered by dynamic blocks: each `org-dblock-write:sj-*'
+  ;; fills one section and `g' re-runs them all.
 
-    ;; Tappable action buttons.  Each entry is (ICON TITLE HELP ACTION).
-    ;; `call-interactively' so commands with interactive specs behave normally.
-    (setq dashboard-navigator-buttons
-          `((("󱄍" "Restore desktop" "Restore saved desktop"
-              (lambda (&rest _) (call-interactively #'my/desktop-restore)))
-             ("⟳" "Pull repo" "Pull Emacs repo changes"
-              (lambda (&rest _) (call-interactively #'sj-dashboard-pull)))
-             ("⚙" "Tangle" "Tangle config.org"
-              (lambda (&rest _) (call-interactively #'sj-dashboard-tangle)))
-             ("↻" "Reload" "Reload the configuration"
-              (lambda (&rest _) (call-interactively #'my-reload-emacs-configuration)))
-             ("✎" "config.org" "Visit config.org"
-              (lambda (&rest _) (call-interactively #'sj-dashboard-visit-config))))
-            (("✎" "mindwtr.org" "Visit mindwtr.org"
-              (lambda (&rest _) (call-interactively #'sj-dashboard-visit-mindwtr)))
-             ("＋" "Capture" "Capture to inbox"
-              (lambda (&rest _) (call-interactively #'org-capture-inbox)))
-             ("" "Agenda" "GTD agenda"
-              (lambda (&rest _) (call-interactively #'mindwtr-engage)))
-             ("󱙓" "Notes" "Browse notes"
-              (lambda (&rest _) (call-interactively #'consult-notes))))))
+  (defvar sj-home-file (sj/sync "docs/org/dashboard.org")
+    "Org file holding the home screen template.")
 
-    ;; Roomier tap targets on touch screens.
-    (add-hook 'dashboard-mode-hook
-              (lambda () (setq-local line-spacing 0.4)))
+  (defvar sj-home-buffer "*dashboard*"
+    "Name of the rendered dashboard buffer.")
 
-    (dashboard-setup-startup-hook))
+  ;; Declared special here so that the `let' in `org-dblock-write:sj-agenda'
+  ;; binds them dynamically even when this file is compiled (by hand or by
+  ;; native-comp's JIT) before `org-agenda' has been loaded.  Without this
+  ;; the bindings are lexical, the agenda quietly ignores them, and you get
+  ;; a week's agenda in a new window instead of one day inline.
+  (defvar org-agenda-window-setup)
+  (defvar org-agenda-span)
+  (defvar org-agenda-sticky)
 
-  ;; `initial-buffer-choice' must return a buffer.  Set at top level (not in
-  ;; :config) and guarded, because Elpaca installs asynchronously: on a very
-  ;; first run dashboard may not be built yet, and an erroring
-  ;; `initial-buffer-choice' would break startup.
-  ;; (setq initial-buffer-choice
-  ;;       (lambda ()
-  ;;         (if (fboundp 'dashboard-open)
-  ;;             (or (ignore-errors (dashboard-open))
-  ;;                 (get-buffer "*dashboard*")
-  ;;                 (get-buffer-create "*scratch*"))
-  ;;           (get-buffer-create "*scratch*"))))
+  (defun org-dblock-write:sj-agenda (params)
+    "Insert today's agenda as plain text.  PARAMS may hold :span."
+    (insert (save-window-excursion
+              (let ((org-agenda-window-setup 'current-window)
+                    (org-agenda-span (or (plist-get params :span) 1))
+                    (org-agenda-sticky nil))
+                (org-agenda-list)
+                (prog1 (buffer-substring-no-properties (point-min) (point-max))
+                  (org-agenda-quit))))))
+
+  (defun org-dblock-write:sj-herdr (_params)
+    "Insert one line per herdr pane that has an agent in it.
+  Rows link to `herdr-pane-focus\=', which moves the server\='s focus as well as
+  attaching and showing the buffer.  The not-loaded button uses `herdr-start\='
+  rather than `herdr\=', which would open the dispatcher over this buffer."
+    (if (not (featurep 'herdr-state))
+        (insert "not loaded -- [[elisp:(herdr-start)][start herdr]], then g\n")
+      (if-let* ((state (herdr-state-current))
+                (panes (herdr-state-agents state)))
+          (dolist (pane panes)
+            (insert (format "- [[elisp:(herdr-pane-focus \"%s\")][%-24s %-8s %s]]\n"
+                            (herdr-pane-id pane)
+                            (or (herdr-state-workspace-label
+                                 state (herdr-pane-workspace-id pane))
+                                "?")
+                            (or (herdr-pane-status pane) "")
+                            (or (herdr-pane-display-agent pane) ""))))
+        (insert "no agents\n"))))
+
+  (defun org-dblock-write:sj-bookmarks (params)
+    "Insert bookmarks as Org links.  PARAMS may hold :n."
+    (require 'bookmark)
+    (dolist (name (seq-take (bookmark-all-names) (or (plist-get params :n) 8)))
+      (insert (format "- [[elisp:(bookmark-jump \"%s\")][%s]]\n" name name))))
+
+  ;;;; Tip of the day, from the Emacs NEWS file
+
+  (defvar sj-home--tip nil
+    "Cached NEWS item, or nil before one has been fetched.")
+
+  (defun sj-home--news-item ()
+    "Return a random entry from the Emacs NEWS file, or nil.
+  The first call parses the whole file (~3.6s; ~16ms once the NEWS buffer
+  exists), which is why neither startup nor `sj-home' ever calls this.
+  Only `sj-home-next-tip' does."
+    (let ((display-buffer-overriding-action
+           '((display-buffer-no-window) (allow-no-window . t))))
+      (save-window-excursion
+        (view-emacs-news)
+        (let (positions)
+          (save-excursion
+            (goto-char (point-min))
+            (while (re-search-forward "^\\*\\*\\*+ \\(.*\\)$" nil t)
+              (push (match-beginning 1) positions)))
+          (when positions
+            (save-excursion
+              (goto-char (seq-random-elt positions))
+              (outline-mark-subtree)
+              (string-trim (buffer-substring-no-properties
+                            (region-beginning) (region-end)))))))))
+
+  (defun org-dblock-write:sj-tip (params)
+    "Insert the cached tip.  PARAMS may hold :lines to cap the height.
+  Deliberately never fetches one, so that `g' stays cheap and the tip on
+  screen only changes when asked for."
+    (let* ((lines (or (plist-get params :lines) 8))
+           (split (split-string
+                   (or sj-home--tip "No tip yet.")
+                   "\n")))
+      (insert (string-join (seq-take split lines) "\n")
+              (if (> (length split) lines) "\n  ...\n" "\n"))))
+
+  (defun sj-home-next-tip ()
+    "Fetch a different Emacs NEWS item, redrawing only the Tip block."
+    (interactive)
+    (setq sj-home--tip (sj-home--news-item))
+    (when-let* ((buf (get-buffer sj-home-buffer)))
+      (with-current-buffer buf
+        (let ((inhibit-read-only t)
+              (inhibit-message t))
+          (save-excursion
+            (goto-char (point-min))
+            (when (re-search-forward "^[ \t]*#\\+BEGIN: sj-tip" nil t)
+              ;; `org-update-dblock' wants point on the #+BEGIN: line itself.
+              (beginning-of-line)
+              (org-update-dblock)))
+          (set-buffer-modified-p nil)))))
+
+  ;;;; The buffer
+
+  (defvar-keymap sj-home-map
+    :doc "Keys layered over `org-mode-map' in the home buffer."
+    "g" #'sj-home
+    "e" #'sj-home-edit
+    "q" #'quit-window
+    "TAB" #'org-next-link
+    "<backtab>" #'org-previous-link)
+
+  (defun sj-home-edit ()
+    "Visit the template behind the home screen."
+    (interactive)
+    (find-file sj-home-file))
+
+  (defun sj-home ()
+    "Show the dashboard, refreshing every section except the tip.
+  Returns the buffer, which is what `initial-buffer-choice' wants.
+  `sj-home-file' is never visited: its text is copied into a scratch buffer
+  and the dynamic blocks run there, so a redraw cannot touch your edits."
+    (interactive)
+    (let ((buf (get-buffer-create sj-home-buffer)))
+      (with-current-buffer buf
+        (let ((inhibit-read-only t)
+              (inhibit-message t))
+          (erase-buffer)
+          (insert-file-contents sj-home-file)
+          (unless (derived-mode-p 'org-mode) (org-mode))
+          (org-update-all-dblocks))
+        ;; After `org-mode', which resets buffer-locals.  Composed, so TAB and
+        ;; `g' shadow `org-cycle' and `self-insert-command' in this buffer only.
+        (use-local-map (make-composed-keymap sj-home-map org-mode-map))
+        (setq buffer-read-only t)
+        (setq-local org-return-follows-link t)
+        ;; My own generated rows; skip the "Execute ... as Elisp?" prompt.
+        (setq-local org-link-elisp-confirm-function nil)
+        ;; A tap is the only gesture on the phone, so links must follow there.
+        ;; On a laptop a stray click should not launch things; RET and TAB do.
+        (setq-local mouse-1-click-follows-link my-phone-p)
+        (when (fboundp 'jinx-mode) (jinx-mode -1))
+        (set-buffer-modified-p nil)
+        (goto-char (point-min)))
+      ;; Display it too, and return it: `initial-buffer-choice' only needs the
+      ;; buffer back, but `M-x sj-home' and a key binding would otherwise
+      ;; render into a buffer you never see.
+      (pop-to-buffer-same-window buf)))
+
+  ;; `C-c J' visits the mindwtr file itself; lowercase opens the dashboard.
+  (keymap-global-set "C-c j" #'sj-home)
+
+  ;; `initial-buffer-choice' must return a buffer and must not error, so it is
+  ;; guarded: a missing sync directory falls back to *scratch* rather than
+  ;; breaking startup.
+  (setq initial-buffer-choice
+        (lambda () (or (ignore-errors (sj-home))
+                       (get-buffer-create "*scratch*"))))
 
 #+end_src
 ** Popup frames
