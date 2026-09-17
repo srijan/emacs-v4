@@ -5822,6 +5822,11 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
     )
 
 #+end_src
+*** Whatsapp
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package wasabi
+    :ensure (:host github :repo "srijan/wasabi"))
+#+end_src
 *** Micropub / Indieweb
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package micropub
