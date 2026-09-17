@@ -36,6 +36,10 @@ I don't edit those `.el` files directly. They are **generated** ("tangled") from
 but none of the generated output — you tangle it yourself after cloning (see
 below). This keeps the repo to a single source of truth.
 
+Retired sections — packages and workflows I've since replaced — are parked in
+[`config-old.org`](config-old.org). Nothing in that file tangles; it is kept
+only so the old setup is there to re-read before wiring the same thing up again.
+
 ## Installation (macOS / Linux)
 
 ```sh
