@@ -2983,8 +2983,9 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
           (dolist (pane panes)
             (insert (format "- [[elisp:(herdr-pane-focus \"%s\")][%-24s %-8s %s]]\n"
                             (herdr-pane-id pane)
-                            (or (herdr-state-workspace-label
-                                 state (herdr-pane-workspace-id pane))
+                            (or (herdr-workspace-label
+                                 (herdr-state-workspace
+                                  state (herdr-pane-workspace-id pane)))
                                 "?")
                             (or (herdr-pane-status pane) "")
                             (or (herdr-pane-display-agent pane) ""))))
