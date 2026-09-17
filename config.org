@@ -1326,6 +1326,12 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
   (when my-mac-p
     (global-set-key (kbd "s-t") #'sj/tab-new-scratch))
 
+  (use-package modern-tab
+    :demand t
+    :ensure (:host github :repo "MArpogaus/modern-tab")
+    :config
+    (modern-tab-bar-mode 1))
+
 #+end_src
 ** COMMENT Workspaces - Tab Bar and Tabspaces
 #+begin_src emacs-lisp :tangle "post-init.el"
