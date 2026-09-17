@@ -555,8 +555,8 @@ the placeholders instead of breaking.
     (let ((font (seq-find (lambda (f) (find-font (font-spec :name f)))
                           '("JetBrainsMono Nerd Font" "JetBrains Mono" "Aporetic Sans Mono"))))
       (when font
-        (set-frame-font (format "%s-17" font) nil t)
-        (add-to-list 'default-frame-alist (cons 'font (format "%s-17" font)))))
+        (set-frame-font (format "%s-13" font) nil t)
+        (add-to-list 'default-frame-alist (cons 'font (format "%s-13" font)))))
     (tool-bar-mode 1)
     (setopt tool-bar-position 'bottom)
     (setopt tool-bar-button-margin 20)
