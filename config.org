@@ -4271,12 +4271,12 @@ session (cookies, UA, Origin, TLS fingerprint) and the xoxc tokens never
 leave the tab: the JS reads them from the web client's =localStorage=, so
 the auth-source entries above are only hash keys for emacs-slack.
 
-- =M-x sj-slack-browser-connect= finds or opens an app.slack.com tab, asks
-  for browser-gt's per-tab JS consent once (it survives reloads, not tab
-  close), then runs =slack-start=.  =sj-slack-browser-disconnect= goes
-  back to the direct curl + websocket.el transport.
-- Everything is gated on =sj-slack-browser-mode=; with it nil emacs-slack
-  is untouched.
+- On by default: a plain =slack-start= finds or opens an app.slack.com tab
+  and goes through it.  The first eval on a tab pops browser-gt's consent
+  overlay (30 s to click "Allow this tab"; it survives reloads, not tab
+  close); =M-x sj-slack-browser-connect= does that step explicitly before
+  starting.  =sj-slack-browser-disconnect= turns the mode off and returns
+  to the direct curl + websocket.el transport.
 - Chrome's Memory Saver freezes background tabs and with them the socket:
   add app.slack.com under "Always keep these sites active".
 - Also carries fixes that are transport-independent but only became
@@ -4295,8 +4295,8 @@ generation so stale evals are dropped.
   (with-eval-after-load 'slack
     (require 'browser-gt)
 
-    (defvar sj-slack-browser-mode nil
-      "Non-nil while emacs-slack is routed through the browser tab.")
+    (defvar sj-slack-browser-mode t
+      "Non-nil: route emacs-slack through the browser tab; on by default.")
 
     (defvar sj-slack-browser-tab-id nil
       "Chrome tab id of the Slack web client used as transport.")
@@ -4602,7 +4602,9 @@ generation so stale evals are dropped.
       (when sj-slack-browser-mode
         (setq sj-slack-browser-tab-id (sj-slack-browser--find-tab))))
 
-    (advice-add 'slack-authorize :before #'sj-slack-browser--refresh-tab)
+    ;; Outermost: the Grid patch's :around bypasses the original, so nested
+    ;; advice never runs.
+    (advice-add 'slack-authorize :before #'sj-slack-browser--refresh-tab '((depth . -100)))
     (advice-add 'slack-ws--reconnect :before #'sj-slack-browser--refresh-tab)
     (advice-add 'slack-request :around #'sj-slack-browser--request)
     (advice-add 'slack-ws-open :around #'sj-slack-browser--ws-open)
