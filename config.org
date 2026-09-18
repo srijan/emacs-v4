@@ -3479,28 +3479,16 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                   (target (gethash buffer sj-eww-desktop-restore-points)))
         (remhash buffer sj-eww-desktop-restore-points)
         (with-current-buffer buffer
-          (goto-char (min target (point-max))))))
+          (goto-char (min target (point-max)))))))
 
-    ;; Lazy: an auth-source read during init (eww loads via ol-eww) runs before
-    ;; minimal-emacs restores file-name-handler-alist, so authinfo.gpg is read as
-    ;; ciphertext and auth-source caches that for the whole session.
-    (define-advice eww (:before (&rest _) sj-kagi-prefix)
-      (when-let* ((token (auth-source-pick-first-password :host "kagi.com" :user "token")))
-        (setq eww-search-prefix (concat "https://kagi.com/html/search?token=" token "&q="))
-        (advice-remove 'eww #'eww@sj-kagi-prefix)))
+  (use-package kagi-search
+    :ensure (:repo "https://git.andros.dev/andros/kagi-search.el")
+    :demand t
+    :commands (kagi-search)
+    :bind ("M-s w" . eww)
+    :config
+    (kagi-search-eww-mode 1))
 
-    (defun sj-eww-kagi-declutter (dom)
-      "Drop Kagi's header/nav/sidebar/footer chrome, keeping only the <main> results."
-      (or (car (dom-by-tag dom 'main)) dom))
-
-    (define-advice eww-display-document (:filter-args (args) sj-eww-kagi-declutter)
-      (pcase-let ((`(,document . ,rest) args))
-        (if (and (eq (car document) 'base)
-                 (string-match-p "\\`https?://kagi\\.com/" (alist-get 'href (cadr document))))
-            (cons (eww-document-base (alist-get 'href (cadr document))
-                                     (sj-eww-kagi-declutter (caddr document)))
-                  rest)
-          args))))
   (defcustom sj-browse-url-handlers `()
     "Alist of (KEY MATCHER . FUNCTION) pairs for URL handling.
     KEY is a symbol identifying the handler.
