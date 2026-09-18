@@ -1879,18 +1879,23 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     "Pull changes in the Emacs config repo.  Asks first (network)."
     (interactive)
     (when (sj-dashboard--confirm "Pull Emacs repo changes? ")
-      (let* ((default-directory minimal-emacs-user-directory)
-             (git (executable-find "git"))
-             ;; PATH, not `exec-path', is what the child shell and then git's own
-             ;; `ssh' search -- and on Android only `exec-path' has Termux's bin.
-             ;; That mismatch was the "exited abnormally with code 127".
-             (process-environment
-              (cons (concat "PATH=" (string-join (remq nil exec-path) ":"))
-                    process-environment)))
+      (let ((default-directory minimal-emacs-user-directory)
+            (git (executable-find "git")))
+        ;; No shell: `/system/bin/sh -c ...' on the Android port exits 127
+        ;; without running anything, so exec git directly as elpaca's clones do.
         (unless git
           (user-error "No git in `exec-path'%s"
                       (if my-phone-p "; run `pkg install git' in Termux" "")))
-        (async-shell-command "git pull" "*emacs-repo-pull*"))))
+        ;; Seed the buffer: `display-buffer' fires before git has written
+        ;; anything, and a blank window reads as a broken command.
+        (with-current-buffer (get-buffer-create "*emacs-repo-pull*")
+          (erase-buffer)
+          (insert "$ git pull\n"))
+        (make-process :name "emacs-repo-pull" :buffer "*emacs-repo-pull*"
+                      :command (list git "pull")
+                      :sentinel (lambda (_proc event)
+                                  (message "git pull: %s" (string-trim event))))
+        (display-buffer "*emacs-repo-pull*"))))
 
   ;;;; Dashboard
   ;; A plain Org file rendered by dynamic blocks: each `org-dblock-write:sj-*'
