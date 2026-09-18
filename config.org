@@ -4218,7 +4218,11 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
     (defun my/slack-authorize (team &optional error-callback success-callback)
       "Authorize TEAM without rtm.connect, which Enterprise Grid blocks."
       (let ((authorize-request (oref team authorize-request)))
-        (if (and authorize-request (not (request-response-done-p authorize-request)))
+        ;; `slack-request' returns its `slack-request-request', not a
+        ;; `request-response', so guard the struct accessor; every callback
+        ;; resets the slot to nil, so anything else means "not pending".
+        (if (and (request-response-p authorize-request)
+                 (not (request-response-done-p authorize-request)))
             (slack-log "Authorize Already Requested" team)
           (oset team authorize-request
                 (slack-request
@@ -4273,6 +4277,483 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
   (require 'gkeep-to-org)
   (setopt gkeep-archive-after-import t)
 
+#+end_src
+
+**** Slack through the browser tab
+
+Route every emacs-slack HTTP call and the RTM websocket through the Slack
+web-client tab, via browser-gt.  Slack then sees only its own browser
+session (cookies, UA, Origin, TLS fingerprint) and the xoxc tokens never
+leave the tab: the JS reads them from the web client's =localStorage=, so
+the auth-source entries above are only hash keys for emacs-slack.
+
+- =M-x sj-slack-browser-connect= finds or opens an app.slack.com tab, asks
+  for browser-gt's per-tab JS consent once (it survives reloads, not tab
+  close), then runs =slack-start=.  =sj-slack-browser-disconnect= goes
+  back to the direct curl + websocket.el transport.
+- Everything is gated on =sj-slack-browser-mode=; with it nil emacs-slack
+  is untouched.
+- Chrome's Memory Saver freezes background tabs and with them the socket:
+  add app.slack.com under "Always keep these sites active".
+- Also carries fixes that are transport-independent but only became
+  visible here: DMs from userBoot's =:ims=, the =slack-event-save-room=
+  arity mismatch, threads in rooms the client never loaded, and file
+  downloads (files.slack.com only) through the tab.
+
+Wiring: =slack-request= -> =EVAL_IN_ACTIVE_TAB= running =fetch()= in the
+tab; =slack-ws-open= / =slack-ws-send= -> a =WebSocket= in the tab's MAIN
+world; the tab posts events back with =window.postMessage= to browser-gt's
+content-script relay, which calls the =SJ_SLACK_WS= handler that feeds
+=slack-ws-on-message= a synthetic frame.  Every command and event carries a
+generation so stale evals are dropped.
+
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (with-eval-after-load 'slack
+    (require 'browser-gt)
+
+    (defvar sj-slack-browser-mode nil
+      "Non-nil while emacs-slack is routed through the browser tab.")
+
+    (defvar sj-slack-browser-tab-id nil
+      "Chrome tab id of the Slack web client used as transport.")
+
+    (defvar sj-slack-browser--on-open nil
+      "On-open callback handed to the last `slack-ws-open'; consumed once.")
+
+    ;; browser-gt evals are async and unordered, so every command and event
+    ;; carries a generation and stale ones are dropped on both sides.
+    (defvar sj-slack-browser--session 0
+      "Bumped by connect and disconnect; HTTP responses from an older session
+    skip emacs-slack's handlers, so a late authorize cannot reopen a socket.")
+
+    (defvar sj-slack-browser--ws-gen 0
+      "Bumped per `slack-ws-open'; a delayed close for the old socket cannot hit
+    the new one, and events from the old socket are ignored.")
+
+    (defvar sj-slack-browser-team-token-urls
+      (list slack-rtm-connect-url
+            slack-conversations-list-url
+            slack-file-get-upload-url-external
+            slack-file-complete-upload-external
+            slack-get-permalink-url
+            slack-conversations-members-url
+            slack-conversations-open-url
+            slack-usergroup-list-url
+            slack-conversations-join-url)
+      "Endpoints that want the team token; everything else gets the enterprise
+    token.  Same list as in `slack-request'.")
+
+    ;;; Tab plumbing
+
+    (defun sj-slack-browser-eval (code callback &optional world)
+      "Run CODE in the Slack tab, calling CALLBACK with browser-gt's response plist."
+      (browser-gt-request-async
+       "EVAL_IN_ACTIVE_TAB"
+       (list :code code :tabId sj-slack-browser-tab-id :world (or world "USER_SCRIPT"))
+       callback))
+
+    (defun sj-slack-browser--eval-result (response)
+      "Return (VALUE . ERROR) from a browser-gt EVAL_IN_ACTIVE_TAB RESPONSE."
+      (let* ((inj (car (plist-get response :result)))
+             (value (plist-get inj :result)))
+        (cons value
+              (or (and (equal (plist-get response :status) "error")
+                       (or (plist-get response :message) "browser-gt error"))
+                  (plist-get inj :error)
+                  (and (listp value) (plist-get value :error))))))
+
+    (defun sj-slack-browser--find-tab ()
+      "Id of an open Slack web-client tab, opening one when there is none."
+      (let ((tab (seq-find (lambda (tab)
+                             (string-prefix-p "https://app.slack.com/"
+                                              (or (plist-get tab :url) "")))
+                           (browser-gt-request "GET_ALL_TABS" nil))))
+        (if tab
+            (plist-get tab :id)
+          (plist-get (browser-gt-request "OPEN_TAB" '(:url "https://app.slack.com/")) :id))))
+
+    ;;; HTTP: `slack-request' -> fetch() in the tab
+
+    (defconst sj-slack-browser-token-js
+      "const sjTok = (kind) => {
+      const teams = Object.values((JSON.parse(localStorage.getItem('localConfig_v2') || '{}').teams) || {});
+      const ws = teams.find(t => t.id && t.id[0] !== 'E') || teams[0] || {};
+      if (kind === 'team') return ws.token;
+      const ent = teams.find(t => t.enterprise_api_token);
+      return ent ? ent.enterprise_api_token : (teams.find(t => t.id && t.id[0] === 'E') || ws).token;
+    };"
+      "JS defining sjTok(KIND): the live xoxc token from the web client's own
+    storage, KIND `team' or `enterprise'.  The token never leaves the tab.
+    ponytail: assumes one workspace in the org; pick by domain if that changes.")
+
+    (defconst sj-slack-browser-fetch-js
+      "(async (a) => {
+      %s
+      const u = new URL(a.url);
+      // Only the tab's own origin (app.slack.com) passes CORS; slack.com and
+      // <team>.slack.com both fail from here.
+      if (u.host === 'slack.com') { u.protocol = location.protocol; u.host = location.host; }
+      for (const [k, v] of Object.entries(a.params || {})) if (v != null) u.searchParams.set(k, v);
+      const h = {...a.headers};
+      if (a.tokenKind) h.Authorization = 'Bearer ' + sjTok(a.tokenKind);
+      let body;
+      if (typeof a.data === 'string') body = a.data;
+      else if (a.data) body = new URLSearchParams(Object.entries(a.data).filter(([k, v]) => v != null));
+      // request.el hands curl -d for GET-with-data and curl turns that into a
+      // POST; fetch() rejects a GET body outright, so do the same upgrade.
+      let method = (a.type || 'GET').toUpperCase();
+      if (body !== undefined && (method === 'GET' || method === 'HEAD')) method = 'POST';
+      try {
+        const r = await fetch(u, {method, headers: h, body, credentials: 'include'});
+        return {status: r.status, retryAfter: r.headers.get('retry-after'), text: await r.text()};
+      } catch (e) {
+        // A rejected promise comes back as a bare null result; name it instead.
+        return {error: String(e)};
+      }
+    })(%s)")
+
+    (defun sj-slack-browser--parse (req text)
+      "Parse TEXT with REQ's parser; return (DATA . ERROR) so bad bodies fail loudly."
+      (condition-case e
+          (cons (with-temp-buffer
+                  (insert text)
+                  (goto-char (point-min))
+                  (funcall (oref req parser)))
+                nil)
+        (error (cons nil (format "parse: %s" (error-message-string e))))))
+
+    (defun sj-slack-browser--on-response (req response on-success on-error)
+      "Deliver browser RESPONSE for REQ to its success/error handlers."
+      (pcase-let* ((`(,res . ,err) (sj-slack-browser--eval-result response))
+                   (status (plist-get res :status))
+                   (text (or (plist-get res :text) ""))
+                   (`(,data . ,parse-err) (sj-slack-browser--parse req text))
+                   (err (or err parse-err))
+                   (failed (or err (not (and (numberp status) (<= 200 status 299)))))
+                   (retry-after (and failed (plist-get res :retryAfter)
+                                     (string-to-number (plist-get res :retryAfter)))))
+        ;; A Retry-After reschedules through the worker, which re-enters this
+        ;; advice; any other failure reaches the request's error handler.
+        (unwind-protect
+            (cond
+             (retry-after
+              (slack-request-retry-request req retry-after)
+              (slack-request-log-retry req retry-after))
+             (failed
+              (slack-request-log-failed req (or err status) 'error data)
+              (when (functionp (oref req error))
+                (funcall (oref req error)
+                         :error-thrown (or err status) :symbol-status 'error
+                         :response nil :data data)))
+             (t
+              ;; An error here would otherwise vanish inside browser-gt's
+              ;; websocket callback; surface it in the Slack log instead.
+              (condition-case e
+                  (funcall (oref req success) :data data)
+                (error (slack-log (format "success handler for %s signalled: %s (text: %s)"
+                                          (oref req url) (error-message-string e)
+                                          ;; api.test echoes its args, token included.
+                                          (replace-regexp-in-string
+                                           "xox[a-z]-[^\"&]*" "[tok]"
+                                           (truncate-string-to-width text 300)))
+                                  (oref req team) :level 'error)))
+              (slack-request-log-success req data)))
+          (when-let ((done (if failed on-error on-success))) (funcall done)))))
+
+    (defun sj-slack-browser--request (orig req &rest keys)
+      "Around `slack-request': run REQ as a fetch() in the Slack tab."
+      (if (or (not sj-slack-browser-mode)
+              (oref req sync)                 ; only emoji download; keep curl
+              (oref req files))               ; multipart uploads; keep curl
+          (apply orig req keys)
+        (let* ((url (oref req url))
+               (token-kind (unless (oref req without-auth)
+                             (if (member url sj-slack-browser-team-token-urls)
+                                 "team"
+                               "enterprise")))
+               (on-success (plist-get keys :on-success))
+               (on-error (plist-get keys :on-error))
+               (session sj-slack-browser--session))
+          (sj-slack-browser-eval
+           (format sj-slack-browser-fetch-js
+                   sj-slack-browser-token-js
+                   (json-encode (list :url url :type (oref req type) :tokenKind token-kind
+                                      :params (oref req params) :data (oref req data)
+                                      :headers (oref req headers))))
+           (lambda (response)
+             (if (= session sj-slack-browser--session)
+                 (sj-slack-browser--on-response req response on-success on-error)
+               ;; Disconnected meanwhile: settle the worker's count, nothing else.
+               (when (functionp on-error) (funcall on-error)))))
+          req)))
+
+    ;;; Websocket: lives in the tab, events relayed back through browser-gt
+
+    (defconst sj-slack-browser-ws-url
+      (concat "wss://wss-primary.slack.com/?token=__TOKEN__"
+              "&sync_desync=1&slack_client=desktop&start_args=%%3Fagent%%3Dclient%%26org_wide_aware%%3Dtrue%%26agent_version%%3D1730299661%%26eac_cache_ts%%3Dtrue%%26cache_ts%%3D0%%26name_tagging%%3Dtrue%%26only_self_subteams%%3Dtrue%%26connect_only%%3Dtrue%%26ms_latest%%3Dtrue&no_query_on_subscribe=1&flannel=3&lazy_channels=1&gateway_server=%s-4&batch_presence_aware=1")
+      "Same URL `slack-ws-open' builds; __TOKEN__ is filled in-tab, %s is the team id.")
+
+    (defconst sj-slack-browser-ws-open-js
+    "((url, team, gen) => {
+      %s
+      url = url.replace('__TOKEN__', encodeURIComponent(sjTok('enterprise')));
+      const g = globalThis;
+      if (g.__sjSlackWs) { try { g.__sjSlackWs.onclose = null; g.__sjSlackWs.close(); } catch (e) {} }
+      const post = (type, data) =>
+        window.postMessage({source: 'browser-gt', name: 'SJ_SLACK_WS', payload: {team, type, data, gen}}, '*');
+      const ws = new WebSocket(url);
+      ws.onopen = () => post('open', null);
+      ws.onmessage = (e) => post('message', e.data);
+      ws.onclose = (e) => post('close', e.code);
+      ws.onerror = () => post('error', null);
+      g.__sjSlackWs = ws;
+      g.__sjSlackGen = gen;
+      return 'opening';
+    })(%s, %s, %s)")
+
+    (defconst sj-slack-browser-ws-send-js
+      "((json, gen) => { const g = globalThis, w = g.__sjSlackWs;
+      if (g.__sjSlackGen !== gen) return 'stale';
+      return (w && w.readyState === 1) ? (w.send(json), 'sent') : 'not-open'; })(%s, %s)")
+
+    (defconst sj-slack-browser-ws-close-js
+      "((gen) => { const g = globalThis, w = g.__sjSlackWs;
+      if (!w || g.__sjSlackGen !== gen) return 'stale';
+      w.onclose = null; w.close(); return 'closed'; })(%s)")
+
+    (defun sj-slack-browser--log-eval (team what)
+      "Callback that logs a failed eval for TEAM as WHAT."
+      (lambda (response)
+        (let ((err (cdr (sj-slack-browser--eval-result response))))
+          (when err
+            (slack-log (format "browser %s failed: %s" what err) team :level 'error)))))
+
+    (defun sj-slack-browser--ws-open (orig ws team &rest keys)
+      "Around `slack-ws-open': open the websocket inside the Slack tab."
+      (if (not sj-slack-browser-mode)
+          (apply orig ws team keys)
+        (let ((id (slack-team-id team)))
+          (setq sj-slack-browser--on-open (plist-get keys :on-open)
+                sj-slack-browser--ws-gen (1+ sj-slack-browser--ws-gen))
+          (slack-ws-set-connect-timeout-timer ws #'slack-ws-on-timeout id)
+          (sj-slack-browser-eval
+           (format sj-slack-browser-ws-open-js
+                   sj-slack-browser-token-js
+                   (json-encode (format sj-slack-browser-ws-url id))
+                   (json-encode id)
+                   sj-slack-browser--ws-gen)
+           (sj-slack-browser--log-eval team "ws open")
+           "MAIN"))))
+
+    (defun sj-slack-browser--ws-send (orig ws payload team)
+      "Around `slack-ws-send': send PAYLOAD through the tab's websocket."
+      (if (not sj-slack-browser-mode)
+          (funcall orig ws payload team)
+        (slack-log-websocket-payload payload team t)
+        (when (slack-ws-retryable-payload-p payload)
+          (push payload (oref ws waiting-send)))
+        (if (oref ws connected)
+            (sj-slack-browser-eval
+             (format sj-slack-browser-ws-send-js
+                     (json-encode (json-encode payload)) sj-slack-browser--ws-gen)
+             (lambda (response)
+               ;; "not-open": the tab's socket is gone (tab reloaded, network
+               ;; dropped) but no close event reached us; same recovery as a
+               ;; failed `websocket-send-text' upstream.  The payload is already
+               ;; in waiting-send when retryable.  "stale": a newer socket has
+               ;; taken over, the resend on its hello covers it.
+               (unless (member (car (sj-slack-browser--eval-result response)) '("sent" "stale"))
+                 (slack-log (format "browser ws send failed: %S" response) team :level 'warn)
+                 (slack-ws--close ws team)
+                 (slack-ws-reconnect ws team)))
+             "MAIN")
+          (slack-ws--close ws team)
+          (slack-ws-reconnect ws team))))
+
+    (defun sj-slack-browser--ws-close (ws team &rest _)
+      "After `slack-ws--close': close the tab's websocket and clear `connected'."
+      (when sj-slack-browser-mode
+        (oset ws connected nil)
+        (when sj-slack-browser-tab-id
+          (sj-slack-browser-eval (format sj-slack-browser-ws-close-js sj-slack-browser--ws-gen)
+                                 (sj-slack-browser--log-eval team "ws close")
+                                 "MAIN"))))
+
+    (defun sj-slack-browser--ws-event (payload)
+      "browser-gt handler for SJ_SLACK_WS: feed tab websocket events to emacs-slack."
+      (let* ((team (slack-team-find (plist-get payload :team)))
+             (ws (and team (oref team ws)))
+             (data (plist-get payload :data)))
+        (when (and ws sj-slack-browser-mode
+                   (eql (plist-get payload :gen) sj-slack-browser--ws-gen))
+          (pcase (plist-get payload :type)
+            ("open"
+             (oset ws reconnect-count 0)
+             (oset ws connected t)
+             (slack-log "WebSocket on-open (browser)" team :level 'debug)
+             (let ((fn sj-slack-browser--on-open))
+               (setq sj-slack-browser--on-open nil)
+               (when (functionp fn) (funcall fn))))
+            ("message"
+             ;; websocket.el would swallow a handler error; name the event instead.
+             (condition-case e
+                 (slack-ws-on-message
+                  ws (make-websocket-frame :opcode 'text :payload data :completep t) team)
+               (error
+                (slack-log (format "ws event handler signalled: %s -- payload head: %s"
+                                   (error-message-string e)
+                                   (truncate-string-to-width (or data "") 200))
+                           team :level 'error))))
+            ("close"
+             (oset ws connected nil)
+             (slack-log (format "Websocket on-close (browser): %s" data) team :level 'debug))
+            ("error"
+             (slack-log "Websocket error (browser)" team :level 'error))))
+        '((status . "ok"))))
+
+    (defun sj-slack-browser--refresh-tab (&rest _)
+      "Re-find the Slack tab before authorize and reconnect; neither runs inside
+    a browser-gt callback, so the sync lookup is safe."
+      (when sj-slack-browser-mode
+        (setq sj-slack-browser-tab-id (sj-slack-browser--find-tab))))
+
+    (advice-add 'slack-authorize :before #'sj-slack-browser--refresh-tab)
+    (advice-add 'slack-ws--reconnect :before #'sj-slack-browser--refresh-tab)
+    (advice-add 'slack-request :around #'sj-slack-browser--request)
+    (advice-add 'slack-ws-open :around #'sj-slack-browser--ws-open)
+    (advice-add 'slack-ws-send :around #'sj-slack-browser--ws-send)
+    (advice-add 'slack-ws--close :after #'sj-slack-browser--ws-close)
+    (browser-gt-register-handler "SJ_SLACK_WS" #'sj-slack-browser--ws-event)
+
+    ;;; File downloads (avatars, thumbnails, attachments) through the tab
+
+    (defconst sj-slack-browser-download-js
+      "(async (url) => {
+      try {
+        const r = await fetch(url, {credentials: 'include'});
+        if (!r.ok) return {status: r.status};
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        let s = '';
+        for (let i = 0; i < bytes.length; i += 0x8000)
+          s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return {status: r.status, b64: btoa(s)};
+      } catch (e) { return {error: String(e)}; }
+    })(%s)")
+
+    (cl-defun sj-slack-browser--copy-file (orig url newname team &rest keys
+                                                &key success error sync &allow-other-keys)
+      "Around `slack-url-copy-file': fetch files.slack.com URLs in the tab, the
+    only fresh session; public CDNs (they refuse CORS) and sync callers keep curl."
+      (if (or (not sj-slack-browser-mode) sync
+              (not (string-prefix-p "https://files.slack.com/" url)))
+          (apply orig url newname team keys)
+        (sj-slack-browser-eval
+         (format sj-slack-browser-download-js (json-encode url))
+         (lambda (response)
+           (pcase-let* ((`(,res . ,err) (sj-slack-browser--eval-result response))
+                        (status (plist-get res :status))
+                        (b64 (plist-get res :b64)))
+             (unless b64 (setq err (or err (format "HTTP %s" status))))
+             ;; A write failure must reach the error callback, not browser-gt's
+             ;; catch-all; success stays outside so it cannot double-complete.
+             (unless err
+               (condition-case e
+                   (with-temp-file newname
+                     (set-buffer-multibyte nil)
+                     (insert (base64-decode-string b64)))
+                 (error (setq err (error-message-string e)))))
+             (if err
+                 (progn
+                   (slack-log (format "browser download failed: %s %s" err url)
+                              team :level 'warn)
+                   (when (functionp error) (funcall error status err 'error url)))
+               (when (functionp success) (funcall success))))))))
+
+    (advice-add 'slack-url-copy-file :around #'sj-slack-browser--copy-file)
+
+    ;;; Upstream arity mismatch in room events
+
+    ;; `slack-event-update' calls `slack-event-save-room' with 3 args; every
+    ;; method in slack-room-event.el takes 4.  Pad the call, widen the default.
+    (cl-defmethod slack-event-save-room ((_this slack-room-event-processable)
+                                         _room _team &optional _cb))
+
+    (defun sj-slack-browser--pad-save-room-args (args)
+      "Give `slack-event-save-room' the callback argument its methods expect."
+      (if (= (length args) 3) (append args (list #'ignore)) args))
+
+    (advice-add 'slack-event-save-room :filter-args #'sj-slack-browser--pad-save-room-args)
+
+    ;;; Threads in rooms the client never loaded (closed DMs, quiet channels)
+
+    ;; getView returns threads from rooms userBoot never listed (closed DMs);
+    ;; name them something instead of crashing, and fetch them for next time.
+    (cl-defmethod slack-room-name ((_room null) _team)
+      "(room not loaded)")
+
+    (defun sj-slack-browser--fetch-missing-thread-room (payload team)
+      "Before `slack-create-thread-view': fetch the thread's room if unknown."
+      (let ((id (plist-get (plist-get payload :root_msg) :channel)))
+        (when (and id (not (slack-room-find id team)))
+          (slack-conversations-info id team))))
+
+    (advice-add 'slack-create-thread-view :before #'sj-slack-browser--fetch-missing-thread-room)
+
+    ;;; Rooms from userBoot, DMs included
+
+    (defun sj-slack-browser--rooms-update (&optional team)
+      "Override for `slack-conversations-list-update-quick' that also reads
+    userBoot's `:ims' (the DMs), which upstream ignores.  Same request, same cond."
+      (interactive)
+      (let ((team (or team (slack-team-select))))
+        (slack-request
+         (slack-request-create
+          slack-api-client-userboot-url
+          team
+          :type "POST"
+          :data (list (cons "min_channel_updated"
+                            (number-to-string
+                             (truncate (- (float-time) (* 6 30 24 60 60))))))
+          :success
+          (cl-function
+           (lambda (&key data &allow-other-keys)
+             (let (channels groups ims)
+               (dolist (c (append (plist-get data :channels) (plist-get data :ims)))
+                 (setq c (plist-put c :is_member t))
+                 (cond
+                  ((and slack-exclude-archived-channels (eq t (plist-get c :is_archived))))
+                  ((eq t (plist-get c :is_channel)) (push (slack-room-create c 'slack-channel) channels))
+                  ((eq t (plist-get c :is_im)) (push (slack-room-create c 'slack-im) ims))
+                  ((eq t (plist-get c :is_group)) (push (slack-room-create c 'slack-group) groups))))
+               (slack-team-set-channels team channels)
+               (slack-team-set-groups team groups)
+               (slack-team-set-ims team ims))))))))
+
+    (advice-add 'slack-conversations-list-update-quick :override #'sj-slack-browser--rooms-update)
+
+    ;;; Commands
+
+    (defun sj-slack-browser-connect ()
+      "Route emacs-slack through the Slack web tab and start it."
+      (interactive)
+      (unless (browser-gt-connected-clients) (browser-gt-start))
+      (setq sj-slack-browser-tab-id (sj-slack-browser--find-tab))
+      ;; First eval on a tab pops browser-gt's consent overlay; settle that
+      ;; (click "Allow this tab") before real traffic starts.
+      (browser-gt-request "EVAL_IN_ACTIVE_TAB"
+                          (list :code "'emacs-slack transport ready'"
+                                :tabId sj-slack-browser-tab-id))
+      (setq sj-slack-browser-mode t
+            sj-slack-browser--session (1+ sj-slack-browser--session))
+      (slack-start))
+
+    (defun sj-slack-browser-disconnect ()
+      "Stop emacs-slack and go back to the direct (curl + websocket.el) transport."
+      (interactive)
+      (setq sj-slack-browser--session (1+ sj-slack-browser--session))
+      (slack-ws-close)
+      (setq sj-slack-browser-mode nil)))
 #+end_src
 *** HackerNews
 #+begin_src emacs-lisp :tangle "post-init.el"
