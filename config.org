@@ -1123,8 +1123,12 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     (use-package ghostel
       :demand t
       :bind (("C-x m" . ghostel)
+             ;; nil = fall through to the global binding.  Keep overrides
+             ;; here, not in `ghostel-keymap-exceptions': setting that
+             ;; rebuilds the map and wipes these.
              :map ghostel-semi-char-mode-map
              ("M-0" . nil)
+             ("M-s" . nil)
              ("C-s"  . consult-line)
              ("M-<backspace>" . ghostel-backward-kill-word)
              ;; ;; I'm used to go up/down the shell history with M-n/p from eshell
