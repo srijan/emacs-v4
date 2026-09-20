@@ -4379,10 +4379,16 @@ generation so stale evals are dropped.
       if (u.host === 'slack.com') { u.protocol = location.protocol; u.host = location.host; }
       for (const [k, v] of Object.entries(a.params || {})) if (v != null) u.searchParams.set(k, v);
       const h = {...a.headers};
-      if (a.tokenKind) h.Authorization = 'Bearer ' + sjTok(a.tokenKind);
+      const tok = a.tokenKind && sjTok(a.tokenKind);
+      if (tok) h.Authorization = 'Bearer ' + tok;
+      // Some callers (activity.feed, scheduled messages) also put Emacs's stale
+      // token in the body, and Slack prefers that over the header: swap it.
       let body;
-      if (typeof a.data === 'string') body = a.data;
-      else if (a.data) body = new URLSearchParams(Object.entries(a.data).filter(([k, v]) => v != null));
+      if (typeof a.data === 'string') body = tok ? a.data.replace(/(name=\"token\"\\r\\n\\r\\n)[^\\r]*/, '$1' + tok) : a.data;
+      else if (a.data) {
+        if (tok && 'token' in a.data) a.data.token = tok;
+        body = new URLSearchParams(Object.entries(a.data).filter(([k, v]) => v != null));
+      }
       // request.el hands curl -d for GET-with-data and curl turns that into a
       // POST; fetch() rejects a GET body outright, so do the same upgrade.
       let method = (a.type || 'GET').toUpperCase();
@@ -4462,7 +4468,10 @@ generation so stale evals are dropped.
            (format sj-slack-browser-fetch-js
                    sj-slack-browser-token-js
                    (json-encode (list :url url :type (oref req type) :tokenKind token-kind
-                                      :params (oref req params) :data (oref req data)
+                                      :params (remq nil (oref req params))
+                                      ;; Upstream builds these with (and x (cons ...)):
+                                      ;; curl skips the nils, json-encode chokes.
+                                      :data (let ((d (oref req data))) (if (listp d) (remq nil d) d))
                                       :headers (oref req headers))))
            (lambda (response)
              (if (= session sj-slack-browser--session)
@@ -4670,6 +4679,18 @@ generation so stale evals are dropped.
       (if (= (length args) 3) (append args (list #'ignore)) args))
 
     (advice-add 'slack-event-save-room :filter-args #'sj-slack-browser--pad-save-room-args)
+
+    ;;; Activity feed items without an author
+
+    ;; `slack-activity-feed--parse-item' does (format "%s" nil) for items with
+    ;; no author (DMs, threads), and "nil" then gets looked up via users.info.
+    (defun sj-slack-browser--nil-author (activity)
+      "Turn the \"nil\" author-id of ACTIVITY back into nil."
+      (let ((msg (oref (oref activity item) message)))
+        (when (equal (oref msg author-id) "nil") (oset msg author-id nil)))
+      activity)
+
+    (advice-add 'slack-activity-feed--parse-item :filter-return #'sj-slack-browser--nil-author)
 
     ;;; Threads in rooms the client never loaded (closed DMs, quiet channels)
 
