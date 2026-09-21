@@ -2359,7 +2359,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
      ;; Built-in read instead of `f-read' (the `f' library isn't guaranteed
      ;; loaded, e.g. on Android), and degrade to "" if the template is missing.
      `((weekly-review
-        . ,(let ((tmpl (expand-file-name "weekly-review.md" my-templates-dir)))
+        . ,(let ((tmpl (expand-file-name "weekly-review.org" my-templates-dir)))
              (if (file-readable-p tmpl)
                  (with-temp-buffer (insert-file-contents tmpl) (buffer-string))
                "")))
