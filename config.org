@@ -1919,7 +1919,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   (defvar org-agenda-window-setup)
   (defvar org-agenda-sticky)
   (defvar org-agenda-buffer-name)
-  (defvar org-agenda-block-separator)
+  (defvar mindwtr-agenda-prefix-width)
+  (defvar mindwtr-agenda-prefix-ellipsis)
 
   (defun sj-home-visit (file pos)
     "Visit FILE at POS and unfold the entry there.  Target of the row links."
@@ -1930,6 +1931,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
   (defun sj-home--linkify-rows ()
     "Rewrite every agenda row in this buffer as an Org link to its entry.
+  Everything else goes: block headers, the date line, blank lines, and a row
+  already seen in an earlier block (a focused task that is also due today).
   Org\\='s own `org-marker\\=' cannot be copied out of an agenda buffer -- it kills
   its markers from `kill-buffer-hook\\=' (`org-agenda-reset-markers\\=') -- so each
   row carries its file and position in an elisp link instead.  Being links is
@@ -1938,47 +1941,76 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
 
   The leading indentation stays outside the link so the agenda\\='s columns still
   line up, and `org-link-make-string\\=' guards the description against the
-  square brackets of a priority cookie."
-    (let ((inhibit-read-only t))
+  square brackets of a priority cookie.  The text keeps its properties: the
+  faces are what `sj-home--faces-to-overlays\\=' later saves."
+    (let ((inhibit-read-only t)
+          seen)
       (save-excursion
         (goto-char (point-min))
         (while (not (eobp))
-          (when-let* ((m (or (org-get-at-bol 'org-hd-marker)
-                             (org-get-at-bol 'org-marker)))
-                      (file (buffer-file-name (marker-buffer m)))
-                      (pos (marker-position m)))
-            (back-to-indentation)
-            (let ((text (buffer-substring-no-properties
-                         (point) (line-end-position))))
-              (delete-region (point) (line-end-position))
-              (insert (org-link-make-string
-                       (format "elisp:(sj-home-visit %S %d)" file pos)
-                       text))))
-          (forward-line 1)))))
+          (let* ((m (or (org-get-at-bol 'org-hd-marker)
+                        (org-get-at-bol 'org-marker)))
+                 (file (and m (buffer-file-name (marker-buffer m))))
+                 (pos (and m (marker-position m))))
+            (if (or (not file) (memq pos seen))
+                (delete-line)
+              (push pos seen)
+              (back-to-indentation)
+              (let ((text (buffer-substring (point) (line-end-position))))
+                (delete-region (point) (line-end-position))
+                (insert (org-link-make-string
+                         (format "elisp:(sj-home-visit %S %d)" file pos)
+                         text)))
+              (forward-line 1)))))))
+
+  (defun sj-home--faces-to-overlays (beg end)
+    "Move the faces on the text between BEG and END into overlays.
+  Font-lock replaces the `face\\=' text property when it fontifies the links,
+  which would lose the todo-keyword and tag faces the agenda gave each row.
+  The overlays evaporate with their text, so a redraw needs no cleanup."
+    (let ((pos beg))
+      (while (< pos end)
+        (let ((next (next-single-property-change pos 'face nil end))
+              (face (get-text-property pos 'face)))
+          (when face
+            (let ((ov (make-overlay pos next)))
+              (overlay-put ov 'face face)
+              (overlay-put ov 'evaporate t)))
+          (setq pos next))))
+    (set-text-properties beg end nil))
+
+  (defun sj-home--inbox-line ()
+    "Return \"Inbox: N\", linked to the Inbox heading of the Mindwtr file."
+    (with-current-buffer (find-file-noselect mindwtr-file)
+      (org-with-wide-buffer
+       (org-link-make-string
+        (format "elisp:(sj-home-visit %S %d)" mindwtr-file
+                (org-find-exact-headline-in-buffer "Inbox" nil t))
+        (format "Inbox: %d" (count-matches "^\\*+ INBOX " (point-min)))))))
 
   (defun org-dblock-write:sj-agenda (_params)
-    "Insert the head of the Mindwtr Engage view: Today and Today\\='s Focus.
-  The spec is `mindwtr-agenda--engage-spec\\=' itself, trimmed to the first two
-  of its five blocks, so these rows cannot drift from what `mindwtr-engage\\='
-  shows.  The build goes to a scratch buffer, because `org-agenda-quit\\=' kills
-  the buffer it built in -- which otherwise takes the user\\='s own
-  `*Org Agenda*\\=' with it."
+    "Insert the Inbox count and the head of the Mindwtr Engage view.
+  The rows are the Today and Today\\='s Focus blocks of
+  `mindwtr-agenda--engage-spec\\=' itself, merged into one list, so they cannot
+  drift from what `mindwtr-engage\\=' shows.  The project column is dropped (a
+  zero-width prefix); the scheduling column and the agenda faces stay.  The
+  build goes to a scratch buffer, because `org-agenda-quit\\=' kills the buffer
+  it built in -- which otherwise takes the user\\='s own `*Org Agenda*\\=' with it."
     (require 'mindwtr-agenda)
-    (pcase-let ((`(,key ,desc ,blocks) (mindwtr-agenda--engage-spec)))
-      (insert (save-window-excursion
-                (let ((org-agenda-window-setup 'current-window)
-                      (org-agenda-sticky nil)
-                      (org-agenda-buffer-name " *sj-agenda*")
-                      ;; A character separator is repeated to the width of
-                      ;; whatever window is current, which here is not the
-                      ;; dashboard's -- a 300-column rule that wraps four
-                      ;; times.  A string is inserted as-is, so "" is the
-                      ;; blank line between blocks without the rule.
-                      (org-agenda-block-separator ""))
-                  (mindwtr-agenda--open (list key desc (seq-take blocks 2)))
-                  (sj-home--linkify-rows)
-                  (prog1 (buffer-substring-no-properties (point-min) (point-max))
-                    (org-agenda-quit)))))))
+    (insert (sj-home--inbox-line) "\nFocus:\n")
+    (let ((beg (point)))
+      (pcase-let ((`(,key ,desc ,blocks) (mindwtr-agenda--engage-spec)))
+        (insert (save-window-excursion
+                  (let ((org-agenda-window-setup 'current-window)
+                        (org-agenda-sticky nil)
+                        (org-agenda-buffer-name " *sj-agenda*")
+                        (mindwtr-agenda-prefix-width 0)
+                        (mindwtr-agenda-prefix-ellipsis ""))
+                    (mindwtr-agenda--open (list key desc (seq-take blocks 2)))
+                    (sj-home--linkify-rows)
+                    (prog1 (buffer-substring (point-min) (point-max))
+                      (org-agenda-quit))))))
+      (sj-home--faces-to-overlays beg (point))))
 
   (defun org-dblock-write:sj-herdr (_params)
     "Insert one line per herdr pane that has an agent in it.
