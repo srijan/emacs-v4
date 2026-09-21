@@ -3423,6 +3423,26 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     )
 
 #+end_src
+** Confluence
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package confluence-reader
+    :install-if (not my-phone-p)
+    :ensure nil
+    :demand t
+    :load-path "~/workspace/srijan/confluence-reader.el"
+    :config
+    (setopt confluence-host (url-host (url-generic-parse-url sj/jira-base-url))
+            confluence-buffer-name-style 'page-title)
+
+    (sj-browse-url-set-handler-rx
+     'confluence
+     `((seq line-start ,sj/jira-base-url "/wiki/"))
+     (lambda (url &rest _)
+       (if (confluence--page-id-from-url url)
+           (confluence-page-from-url url)
+         ;; space listings, /display/ links, dashboards: nothing to render
+         (funcall sj-browse-url-default-handler url)))))
+#+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-linux-p
