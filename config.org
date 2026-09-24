@@ -5853,7 +5853,7 @@ Lands the cursor on the channel you were just in, treemacs-style."
     :config
     (global-activity-watch-mode 1))
 #+end_src
-- ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them.
+- ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them. While a minibuffer prompt is open the title keeps naming the buffer it was opened from, and notmuch message buffers, which are named after the mail's subject, get a =– notmuch= tag.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (defvar-local sj-frame-title--project 'unset
     "Cached project root for the frame title; `unset' until first computed.")
@@ -5873,7 +5873,19 @@ Lands the cursor on the channel you were just in, treemacs-style."
                     (directory-file-name (project-root pr)))))))
     (and sj-frame-title--project (concat " – " sj-frame-title--project)))
 
-  (setq frame-title-format '("%b" (:eval (sj-frame-title-project)) " – Emacs")
+  (defun sj-frame-title ()
+    "Frame title for the buffer being worked on, not the minibuffer.
+  Mail buffers are named after their subject, so tag them for ActivityWatch."
+    (with-current-buffer (window-buffer (or (minibuffer-selected-window)
+                                            (selected-window)))
+      (string-replace
+       "%" "%%"
+       (concat (buffer-name)
+               (sj-frame-title-project)
+               (and (derived-mode-p 'notmuch-show-mode) " – notmuch")
+               " – Emacs"))))
+
+  (setq frame-title-format '(:eval (sj-frame-title))
         icon-title-format frame-title-format)
 #+end_src
 ** Homeassistant
