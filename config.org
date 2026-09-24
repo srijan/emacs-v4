@@ -5827,6 +5827,16 @@ Lands the cursor on the channel you were just in, treemacs-style."
     :install-if (not my-phone-p)
     :demand t)
 #+end_src
+- [[https://github.com/pauldub/activity-watch-mode][activity-watch-mode]] sends editing heartbeats to a local ActivityWatch server (http://localhost:5600). If the server is down, the mode turns itself off; re-enable with =M-x global-activity-watch-mode=.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package activity-watch-mode
+    :install-if (not my-phone-p)
+    :demand t
+    :custom
+    (activity-watch-project-name-resolvers '(project-force magit-origin))
+    :config
+    (global-activity-watch-mode 1))
+#+end_src
 - ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (defvar-local sj-frame-title--project 'unset
