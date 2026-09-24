@@ -5827,6 +5827,29 @@ Lands the cursor on the channel you were just in, treemacs-style."
     :install-if (not my-phone-p)
     :demand t)
 #+end_src
+- ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (defvar-local sj-frame-title--project 'unset
+    "Cached project root for the frame title; `unset' until first computed.")
+
+  (defun sj-frame-title-project ()
+    "Return \" – ROOT\" for the current buffer's project, or nil.
+  Computed once per buffer: the title is redrawn on every redisplay."
+    ;; ponytail: cache goes stale if a buffer's default-directory changes (cd in a shell)
+    (when (eq sj-frame-title--project 'unset)
+      (setq sj-frame-title--project
+            (and (or buffer-file-name
+                     (derived-mode-p 'dired-mode 'magit-mode 'ghostel-mode
+                                     'vterm-mode 'eat-mode 'eshell-mode))
+                 (not (file-remote-p default-directory))
+                 (when-let* ((pr (project-current)))
+                   (abbreviate-file-name
+                    (directory-file-name (project-root pr)))))))
+    (and sj-frame-title--project (concat " – " sj-frame-title--project)))
+
+  (setq frame-title-format '("%b" (:eval (sj-frame-title-project)) " – Emacs")
+        icon-title-format frame-title-format)
+#+end_src
 ** Homeassistant
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package hass
