@@ -3109,15 +3109,31 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (setopt message-send-mail-function 'message-send-mail-with-sendmail)
     (setopt sendmail-program (executable-find "gmi"))
     (setopt message-sendmail-f-is-evil t)
-    (setopt message-sendmail-extra-arguments
-            `("send" "--quiet" "-t" "-C" ,(concat "/Users/srijan.c/Maildir/" sj/employer)))
     (setopt message-kill-buffer-on-exit t)
 
     ;; No FCC — gmi send stores in Gmail Sent, lieer pulls it back on next sync
     (setopt notmuch-fcc-dirs nil)
 
-    (setopt notmuch-identities (list (format "Srijan Choudhary <%s>" sj/mail-work)))
+    ;; First is the default From; C-u before a compose command prompts.
+    ;; Replies take From from `notmuch reply' (user.other_email).
+    (setopt notmuch-identities
+            (mapcar (lambda (addr) (format "Srijan Choudhary <%s>" addr))
+                    (list sj/mail-work sj/mail-personal)))
     (setopt notmuch-always-prompt-for-sender nil)
+
+    (defun sj-notmuch-send-as-sender ()
+      "Send with gmi from the maildir of the Gmail account owning From.
+  Runs in the prepared buffer just before `sendmail-program' is called."
+      (let* ((from (save-restriction
+                     (message-narrow-to-head)
+                     (message-fetch-field "from")))
+             (addr (cadr (mail-extract-address-components from)))
+             (dir (or (car (rassoc addr my/notmuch-maildir-accounts))
+                      (user-error "No Gmail account for From: %s" from))))
+        (setq-local message-sendmail-extra-arguments
+                    `("send" "--quiet" "-t" "-C"
+                      ,(expand-file-name dir "~/Maildir")))))
+    (add-hook 'message-send-mail-hook #'sj-notmuch-send-as-sender)
 
     ;; Prefer HTML
     (setopt notmuch-multipart/alternative-discouraged '("text/plain" "text/richtext"))
