@@ -5851,6 +5851,28 @@ Lands the cursor on the channel you were just in, treemacs-style."
     :custom
     (activity-watch-project-name-resolvers '(project-force magit-origin))
     :config
+    ;; The macOS hostname follows the network, and the package names its bucket
+    ;; after `system-name' on every heartbeat, so a network change starts a second
+    ;; editor bucket.  Use the hostname the server fixed at its startup instead.
+    ;; ponytail: cached until Emacs restarts; stale if the server restarts renamed.
+    (defvar sj-activity-watch--host nil
+      "Hostname reported by the ActivityWatch server, cached on first success.")
+    (defun sj-activity-watch--use-server-host (fn &rest args)
+      "Call FN with ARGS, `system-name' returning the ActivityWatch server's hostname."
+      (unless sj-activity-watch--host
+        (setq sj-activity-watch--host
+              (ignore-errors
+                (with-current-buffer (url-retrieve-synchronously
+                                      (concat activity-watch-api-host "/api/0/info") t nil 2)
+                  (prog1 (progn (goto-char url-http-end-of-headers)
+                                (alist-get 'hostname (json-read)))
+                    (kill-buffer))))))
+      (if sj-activity-watch--host
+          (cl-letf (((symbol-function 'system-name) (lambda () sj-activity-watch--host)))
+            (apply fn args))
+        (apply fn args)))
+    (advice-add 'activity-watch--bucket-id :around #'sj-activity-watch--use-server-host)
+    (advice-add 'activity-watch--create-bucket :around #'sj-activity-watch--use-server-host)
     (global-activity-watch-mode 1))
 #+end_src
 - ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them. While a minibuffer prompt is open the title keeps naming the buffer it was opened from, and notmuch message buffers, which are named after the mail's subject, get a =– notmuch= tag.
