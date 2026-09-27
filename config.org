@@ -490,6 +490,25 @@ the placeholders instead of breaking.
       )
     )
 #+end_src
+*** Claude Code theme sync
+Claude Code hot-reloads =~/.claude/themes/emacs.json= (settings: ="theme": "custom:emacs"=),
+so rewriting its =base= makes running sessions follow the Emacs theme. ef/modus
+themes declare =:background-mode= in their theme properties.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when (not my-phone-p)
+    (defun sj-claude-sync-theme (theme)
+      "Write THEME's dark/light mode to Claude Code's custom theme file."
+      (when-let* ((mode (plist-get (get theme 'theme-properties) :background-mode))
+                  (file (expand-file-name "~/.claude/themes/emacs.json"))
+                  (json (format "{\"name\":\"Emacs\",\"base\":\"%s\"}\n" mode)))
+        (unless (and (file-exists-p file)
+                     (equal json (with-temp-buffer
+                                   (insert-file-contents file)
+                                   (buffer-string))))
+          (make-directory (file-name-directory file) t)
+          (write-region json nil file nil 'silent))))
+    (add-hook 'enable-theme-functions #'sj-claude-sync-theme))
+#+end_src
 *** Mac
 #+begin_src emacs-lisp :tangle "post-init.el"
   (when my-mac-p
