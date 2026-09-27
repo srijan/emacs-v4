@@ -524,15 +524,35 @@ themes declare =:background-mode= in their theme properties.
       (modus-themes-include-derivatives-mode 1)
       (setopt modus-themes-to-rotate '(ef-maris-dark ef-elea-dark ef-winter ef-duo-dark ef-maris-light ef-elea-light ef-spring))
 
+      ;; Theme and `global-text-scale-adjust' height survive restarts via this file.
+      (defvar sj-appearance-file (locate-user-emacs-file "sj-appearance.eld"))
+      (defvar sj-appearance
+        (ignore-errors
+          (with-temp-buffer
+            (insert-file-contents sj-appearance-file)
+            (read (current-buffer))))
+        "Plist (:theme THEME :height N) saved at the last exit.")
+      (defvar sj-font-height (or (plist-get sj-appearance :height) 140))
+      (define-advice global-text-scale-adjust (:after (&rest _) sj-remember)
+        (setq sj-font-height (face-attribute 'default :height)))
+      (defun sj-appearance-save ()
+        (ignore-errors
+          (with-temp-file sj-appearance-file
+            (prin1 (list :theme (car custom-enabled-themes) :height sj-font-height)
+                   (current-buffer)))))
+      (add-hook 'kill-emacs-hook #'sj-appearance-save)
+
       (defun my/custom-faces (&rest _)
         (custom-set-faces
-         '(region ((t :extend nil))))      
-        (set-face-attribute 'default nil :family "JetBrainsMono Nerd Font" :height 140)
+         '(region ((t :extend nil))))
+        (set-face-attribute 'default nil :family "JetBrainsMono Nerd Font" :height sj-font-height)
         )
       (add-hook 'modus-themes-after-load-theme-hook #'my/custom-faces)
-      
 
-      (modus-themes-load-theme 'ef-maris-dark)
+
+      (let ((theme (plist-get sj-appearance :theme)))
+        (modus-themes-load-theme
+         (if (memq theme (custom-available-themes)) theme 'ef-maris-dark)))
       )
 
     ;; (require 'materialized-theme)
