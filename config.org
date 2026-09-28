@@ -5914,7 +5914,7 @@ Lands the cursor on the channel you were just in, treemacs-style."
     (advice-add 'activity-watch--create-bucket :around #'sj-activity-watch--use-server-host)
     (global-activity-watch-mode 1))
 #+end_src
-- ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit and terminal buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them. While a minibuffer prompt is open the title keeps naming the buffer it was opened from, and notmuch message buffers, which are named after the mail's subject, get a =– notmuch= tag.
+- ActivityWatch categorizes Emacs time by window title, so the frame title carries the project root: =README.md – ~/workspace/foo – Emacs=. Category rules in the ActivityWatch web UI match on that path (work repos under =~/workspace/=, personal ones in =~/workspace/srijan/= or elsewhere). Only file, dired, magit, terminal and agent-shell buffers get it; readers like elfeed or Slack inherit whatever =default-directory= they were opened from, and a project there would misfile them. While a minibuffer prompt is open the title keeps naming the buffer it was opened from, and notmuch message buffers, which are named after the mail's subject, get a =– notmuch= tag.
 #+begin_src emacs-lisp :tangle "post-init.el"
   (defvar-local sj-frame-title--project 'unset
     "Cached project root for the frame title; `unset' until first computed.")
@@ -5927,7 +5927,8 @@ Lands the cursor on the channel you were just in, treemacs-style."
       (setq sj-frame-title--project
             (and (or buffer-file-name
                      (derived-mode-p 'dired-mode 'magit-mode 'ghostel-mode
-                                     'vterm-mode 'eat-mode 'eshell-mode))
+                                     'vterm-mode 'eat-mode 'eshell-mode
+                                     'agent-shell-mode))
                  (not (file-remote-p default-directory))
                  (when-let* ((pr (project-current)))
                    (abbreviate-file-name
