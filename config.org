@@ -2860,7 +2860,55 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (use-package agent-shell
       :ensure (:host github :repo "xenodium/agent-shell")
       :demand t
+      :bind (:prefix-map sj-agent-shell-map
+                         :prefix "C-c C-'"
+                         :prefix-docstring "Agent shell commands."
+                         ("n" . sj-agent-shell-new)
+                         ("N" . sj-agent-shell-new-pick-agent)
+                         ("p" . sj-agent-shell-new-in-project)
+                         ("P" . sj-agent-shell-new-in-project-pick-agent)
+                         ("f" . agent-shell-switch-buffer)
+                         ("d" . agent-shell-dashboard)
+                         ("m" . agent-shell-manager-toggle)
+                         :map project-prefix-map
+                         ("a" . sj-agent-shell-project))
       :config
+      (defun sj-agent-shell-project ()
+        "Pick one of this project's open agent shells, or start a new one."
+        (interactive)
+        (let* ((bufs (mapcar #'buffer-name (agent-shell-project-buffers)))
+               (new "New shell")
+               (choice (if bufs
+                           (completing-read "Agent shell: " (append bufs (list new))
+                                            nil t nil nil (car bufs))
+                         new)))
+          (if (equal choice new)
+              (agent-shell '(4))
+            (agent-shell--display-buffer (get-buffer choice)))))
+      (defun sj-agent-shell-new (&optional pick-agent)
+        "Start a new agent shell in the current project.
+      With PICK-AGENT (prefix arg), ask for the agent despite the preferred one."
+        (interactive "P")
+        (if pick-agent
+            (agent-shell--dwim :new-shell t
+                               :config (agent-shell-select-config :prompt "Start new agent: "))
+          (agent-shell '(4))))
+      (defun sj-agent-shell-new-pick-agent ()
+        "Start a new agent shell in the current project, asking for the agent."
+        (interactive)
+        (sj-agent-shell-new t))
+      (defun sj-agent-shell-new-in-project (&optional pick-agent)
+        "Ask for a project and start a new agent shell there.
+      With PICK-AGENT (prefix arg), also ask for the agent."
+        (interactive "P")
+        (let ((default-directory (project-prompt-project-dir)))
+          (sj-agent-shell-new pick-agent)))
+      (defun sj-agent-shell-new-in-project-pick-agent ()
+        "Ask for a project and an agent, and start a new agent shell."
+        (interactive)
+        (sj-agent-shell-new-in-project t))
+      (add-to-list 'project-switch-commands '(sj-agent-shell-project "Agent shell") t)
+      (setopt agent-shell-preferred-agent-config 'claude-code)
       (setopt agent-shell-anthropic-authentication
               (agent-shell-anthropic-make-authentication :login t))
       (setopt agent-shell-openai-authentication
@@ -2877,6 +2925,11 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       :ensure (:host github :repo "wandersoncferreira/agent-shell-dashboard")
       :after agent-shell
       :commands (agent-shell-dashboard))
+    ;; Trying against agent-shell-dashboard: live table of open shells.
+    (use-package agent-shell-manager
+      :ensure (:host github :repo "jethrokuan/agent-shell-manager")
+      :after agent-shell
+      :commands (agent-shell-manager-toggle))
     )
 #+end_src
 
