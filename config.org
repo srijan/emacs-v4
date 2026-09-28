@@ -2933,6 +2933,495 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     )
 #+end_src
 
+*** Tools
+Tools that let coding agents use this Emacs: read flymake diagnostics, the user's
+selection and the files open in a project, and read and update a repository's
+=.blackboard/todo.org= through org, so state changes get their =CLOSED:= and
+=:LOGBOOK:= lines.  They are plain functions, served
+over MCP by =mcp-server-lib= and also registered with gptel.
+
+=mcp-server-lib= only does the protocol.  Its =emacs-mcp-stdio.sh= turns each MCP
+request into an =emacsclient= call, and calls ~sj-agent-tools-start~ first, which
+loads the library and registers the tools, so nothing loads at startup.
+The server is registered once, at user scope, which covers both the =claude= CLI
+and agent-shell (claude-agent-acp loads user settings, so an
+~agent-shell-mcp-servers~ entry would list every tool twice):
+
+: claude mcp add -s user emacs -e EMACS_SERVER_FILE=$HOME/.emacs.d/var/server/server -- $HOME/.emacs.d/var/elpaca/builds/mcp-server-lib/emacs-mcp-stdio.sh --init-function=sj-agent-tools-start --server-id=sj-emacs
+
+=EMACS_SERVER_FILE= is set there because agent-shell's claude inherits this
+Emacs's environment, which does not have it.
+
+Each tool's parameters are described once, in its docstring's =MCP Parameters:=
+block: mcp-server-lib reads it, and ~sj-agent-tools--gptel-args~ builds gptel's
+=:args= from it.  Keep each parameter on one line.  Registration is
+first-writer-wins, so after editing a tool run =M-x sj-agent-tools-reload=.
+
+Tools run inside the live Emacs: every loop is bounded, output is capped at
+~sj-agent-tools-max-lines~, and text is taken without properties.
+#+begin_src emacs-lisp :tangle "post-init.el"
+  ;; Loaded by `sj-agent-tools-start', the stdio script's init function.
+  ;; `mcp-server-lib-start' lives in mcp-server-lib-commands, which
+  ;; mcp-server-lib does not load, so :commands cannot point at it.
+  (use-package mcp-server-lib
+    :install-if (not my-phone-p))
+
+  (defconst sj-agent-tools-server-id "sj-emacs")
+
+  (defvar sj-agent-tools-max-lines 200
+    "Most lines any agent tool returns.")
+
+  (defun sj-agent-tools--project-buffers (dir)
+    "Return (ROOT . BUFFERS): file buffers under DIR's project root."
+    (let* ((dir (file-name-as-directory (expand-file-name dir)))
+           (proj (project-current nil dir))
+           ;; Truenames, so a project reached through a symlink (macOS /tmp
+           ;; is /private/tmp) still matches its buffers.
+           (root (file-truename (if proj (project-root proj) dir))))
+      (cons root
+            (seq-filter (lambda (b)
+                          (when-let* ((f (buffer-local-value 'buffer-file-truename b)))
+                            (string-prefix-p root (expand-file-name f))))
+                        (buffer-list)))))
+
+  (defun sj-agent-tools--cap (lines)
+    "Join LINES, keeping at most `sj-agent-tools-max-lines'."
+    (let ((n (length lines)))
+      (string-join
+       (if (<= n sj-agent-tools-max-lines)
+           lines
+         (append (take sj-agent-tools-max-lines lines)
+                 (list (format "... %d more" (- n sj-agent-tools-max-lines)))))
+       "\n")))
+
+  (defun sj-agent-tools-diagnostics (path &optional severity)
+    "Return flymake diagnostics for PATH, most severe first.
+
+  MCP Parameters:
+    path - absolute path of a file (that file only) or a directory (every buffer open in Emacs under that directory's project; pass your working directory for the whole project)
+    severity - optional; one of error, warning, note to return only that severity"
+    (let* ((names '((flymake-error . "error") (flymake-warning . "warning")
+                    (flymake-note . "note")))
+           (want (and severity (not (string-empty-p severity))
+                      (or (car (rassoc severity names))
+                          (user-error "Unknown severity %S; use error, warning or note"
+                                      severity))))
+           (path (expand-file-name path))
+           (bufs (cond ((file-directory-p path)
+                        (cdr (sj-agent-tools--project-buffers path)))
+                       ((find-buffer-visiting path) (list (find-buffer-visiting path)))
+                       ((file-exists-p path) nil)
+                       (t (user-error "No such file or directory: %s" path))))
+           (checked 0)
+           rows)
+      (dolist (buf bufs)
+        (with-current-buffer buf
+          (when (bound-and-true-p flymake-mode)
+            (cl-incf checked)
+            (save-restriction
+              (widen)
+              (dolist (d (flymake-diagnostics))
+                (let* ((type (flymake-diagnostic-type d))
+                       (cat (or (get type 'flymake-category) type)))
+                  (when (or (not want) (eq cat want))
+                    (save-excursion
+                      (goto-char (flymake-diagnostic-beg d))
+                      (push (list (or (seq-position (mapcar #'car names) cat) 3)
+                                  buffer-file-name
+                                  (line-number-at-pos nil t)
+                                  (format "%s:%d:%d: %s: %s (%s)"
+                                          buffer-file-name
+                                          (line-number-at-pos nil t)
+                                          (1+ (current-column))
+                                          (alist-get cat names "note")
+                                          (substring-no-properties
+                                           (flymake-diagnostic-text d))
+                                          (flymake-diagnostic-backend d)))
+                            rows)))))))))
+      (setq rows (sort rows :key (lambda (r) (take 3 r))))
+      (concat (format "%d diagnostics in %d of %d open file buffers with flymake running.\n"
+                      (length rows) checked (length bufs))
+              (sj-agent-tools--cap (mapcar (lambda (r) (nth 3 r)) rows)))))
+
+  (defun sj-agent-tools--last-file-window ()
+    "Return the most recently used visible window that shows a file."
+    (seq-find (lambda (w) (buffer-file-name (window-buffer w)))
+              (sort (window-list-1 nil 'nomini 'visible)
+                    :key #'window-use-time :reverse t)))
+
+  (defun sj-agent-tools-selection ()
+    "Return the user's selected text, or the lines around point, in the file they last looked at."
+    (let ((win (or (sj-agent-tools--last-file-window)
+                   (user-error "No visible window shows a file"))))
+      (with-selected-window win
+        (save-restriction
+          (widen)
+          (if (use-region-p)
+              (let ((beg (region-beginning)) (end (region-end)))
+                (format "%s:%d-%d (selected region)\n%s"
+                        buffer-file-name
+                        (line-number-at-pos beg t) (line-number-at-pos end t)
+                        (sj-agent-tools--cap
+                         (split-string (buffer-substring-no-properties beg end) "\n"))))
+            (let* ((line (line-number-at-pos nil t))
+                   (col (1+ (current-column)))
+                   (first (max 1 (- line 10)))
+                   lines)
+              (save-excursion
+                (forward-line (- first line))
+                (dotimes (i 21)
+                  (unless (and (> i 0) (eobp))
+                    (push (format "%s%5d| %s" (if (= (+ first i) line) ">" " ")
+                                  (+ first i)
+                                  (buffer-substring-no-properties
+                                   (line-beginning-position) (line-end-position)))
+                          lines)
+                    (forward-line 1))))
+              (format "%s:%d:%d (no region; lines around point, > marks point)\n%s"
+                      buffer-file-name line col
+                      (string-join (nreverse lines) "\n"))))))))
+
+  (defun sj-agent-tools-open-buffers (path)
+    "List the files open in Emacs under PATH's project, marking unsaved and visible ones.
+
+  MCP Parameters:
+    path - absolute directory; files open under its project root are listed"
+    (pcase-let ((`(,root . ,bufs) (sj-agent-tools--project-buffers path)))
+      (concat (format "%d files open under %s\n" (length bufs) root)
+              (sj-agent-tools--cap
+               (mapcar (lambda (b)
+                         (format "%s  %s%s%s" (buffer-file-name b)
+                                 (buffer-local-value 'major-mode b)
+                                 (if (buffer-modified-p b) "  unsaved" "")
+                                 (if (get-buffer-window b 'visible) "  visible" "")))
+                       bufs)))))
+
+  (defun sj-agent-tools--xref (file line symbol fn)
+    "Call FN with the xref backend and identifier for SYMBOL on LINE of FILE.
+  A file not open in Emacs is opened in the background, where eglot takes
+  it over if its project's server is running, and killed afterwards.  The
+  etags fallback is refused: it prompts for a TAGS file."
+    (let* ((file (expand-file-name file))
+           (line (if (stringp line) (string-to-number line) line))
+           (buf (find-buffer-visiting file))
+           (opened (and (not buf) (file-readable-p file) (find-file-noselect file))))
+      (unless (or buf opened)
+        (user-error "No such file: %s" file))
+      (unwind-protect
+          (with-current-buffer (or buf opened)
+            (let ((backend (xref-find-backend))
+                  (case-fold-search nil))
+              (when (memq backend '(nil etags))
+                (user-error "No xref backend for %s; start eglot in its project" file))
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char (point-min))
+                  (forward-line (1- line))
+                  (unless (search-forward symbol (line-end-position) t)
+                    (user-error "%S not found on line %d of %s" symbol line file))
+                  (goto-char (match-beginning 0))
+                  (funcall fn backend (xref-backend-identifier-at-point backend))))))
+        (when (and opened (buffer-live-p opened) (not (buffer-modified-p opened)))
+          (kill-buffer opened)))))
+
+  (defun sj-agent-tools--xref-line (loc)
+    "Return LOC's line.  Emacs Lisp locations only know it once resolved,
+  which visits the file; kill that buffer again unless it was already open."
+    (or (xref-location-line loc)
+        (let* ((before (buffer-list))
+               (marker (ignore-errors (xref-location-marker loc))))
+          (when marker
+            (prog1 (with-current-buffer (marker-buffer marker)
+                     (save-restriction (widen) (line-number-at-pos marker t)))
+              (unless (memq (marker-buffer marker) before)
+                (kill-buffer (marker-buffer marker))))))))
+
+  (defun sj-agent-tools--xref-lines (items what)
+    "Format xref ITEMS as file:line: summary lines, headed by WHAT."
+    (if (null items)
+        (format "No %s found." what)
+      (concat (format "%d %s\n" (length items) what)
+              (sj-agent-tools--cap
+               (mapcar (lambda (item)
+                         (let ((loc (xref-item-location item)))
+                           (format "%s:%s: %s" (xref-location-group loc)
+                                   (sj-agent-tools--xref-line loc)
+                                   (string-trim (substring-no-properties
+                                                 (xref-item-summary item))))))
+                       items)))))
+
+  (defun sj-agent-tools-xref-definitions (file line symbol)
+    "Find where a symbol used on a given line is defined.
+
+  MCP Parameters:
+    file - absolute path of a file that uses the symbol
+    line - 1-based line number where the symbol appears
+    symbol - the identifier as written on that line; point goes to the first match, so add the text after it (e.g. name( for a call) when the line has it more than once"
+    (sj-agent-tools--xref
+     file line symbol
+     (lambda (backend id)
+       (sj-agent-tools--xref-lines (xref-backend-definitions backend id)
+                                   "definitions"))))
+
+  (defun sj-agent-tools-xref-references (file line symbol)
+    "Find every use of a symbol across its project, from the language server.
+
+  MCP Parameters:
+    file - absolute path of a file that uses the symbol
+    line - 1-based line number where the symbol appears
+    symbol - the identifier as written on that line; point goes to the first match, so add the text after it (e.g. name( for a call) when the line has it more than once"
+    (sj-agent-tools--xref
+     file line symbol
+     (lambda (backend id)
+       ;; Other backends fall back to grepping the whole project inside
+       ;; Emacs, which blocks it for seconds; the agent's own grep is better.
+       (unless (eq backend 'eglot)
+         (user-error "References need eglot running for %s; use grep instead" file))
+       (sj-agent-tools--xref-lines (xref-backend-references backend id)
+                                   "references"))))
+
+  (defun sj-agent-tools-describe-symbol (symbol)
+    "Describe an Emacs Lisp function or variable in the running Emacs.
+
+  MCP Parameters:
+    symbol - the symbol's name"
+    (let ((sym (intern-soft symbol))
+          parts)
+      (unless (and sym (or (fboundp sym) (boundp sym)))
+        (user-error "No function or variable named %s" symbol))
+      (when (fboundp sym)
+        (push (format "Function: %s\nArguments: %s\nDefined in: %s\n\n%s"
+                      sym (help-function-arglist sym t)
+                      (or (symbol-file sym 'defun) "unknown")
+                      (or (ignore-errors (documentation sym t)) "Not documented."))
+              parts))
+      (when (boundp sym)
+        (push (format "Variable: %s\nDefined in: %s\nDefault value: %s\n\n%s"
+                      sym (or (symbol-file sym 'defvar) "unknown")
+                      (let ((print-length 20) (print-level 3))
+                        (truncate-string-to-width (format "%S" (default-value sym))
+                                                  500 nil nil "..."))
+                      (or (ignore-errors
+                            (documentation-property sym 'variable-documentation t))
+                          "Not documented."))
+              parts))
+      (substring-no-properties (string-join (nreverse parts) "\n\n----\n\n"))))
+
+  (defun sj-agent-tools--blackboard (repo)
+    "Return the buffer of the .blackboard/todo.org shared by REPO's checkouts.
+  Worktrees resolve to the main checkout.  A buffer whose file changed on
+  disk is reverted first, unless it has unsaved edits."
+    (let* ((dir (file-name-as-directory (expand-file-name repo)))
+           (common (with-temp-buffer
+                     (when (and (file-directory-p dir)
+                                (zerop (call-process "git" nil t nil "-C" dir "rev-parse"
+                                                     "--path-format=absolute"
+                                                     "--git-common-dir")))
+                       (string-trim (buffer-string)))))
+           (file (and common
+                      (expand-file-name ".blackboard/todo.org"
+                                        (file-name-directory (directory-file-name common))))))
+      (unless (and file (file-exists-p file))
+        (user-error "No .blackboard/todo.org for %s" repo))
+      (let ((buf (find-buffer-visiting file)))
+        (if (not buf)
+            (find-file-noselect file)
+          (unless (verify-visited-file-modtime buf)
+            (with-current-buffer buf
+              (if (buffer-modified-p)
+                  (user-error "todo.org changed on disk and has unsaved edits in Emacs")
+                (revert-buffer t t t))))
+          buf))))
+
+  (defun sj-agent-tools--blackboard-edit (repo fn)
+    "Call FN at the start of REPO's widened blackboard buffer, then save it.
+  Refuse if the buffer has unsaved edits, so the save cannot sweep them up."
+    (with-current-buffer (sj-agent-tools--blackboard repo)
+      (when (buffer-modified-p)
+        (user-error "todo.org has unsaved edits in Emacs; save them first"))
+      (prog1 (org-with-wide-buffer
+              (goto-char (point-min))
+              (funcall fn))
+        (save-buffer))))
+
+  (defun sj-agent-tools--blackboard-goto (id)
+    "Move to the entry with ID in the current buffer."
+    (goto-char (or (org-find-entry-with-id id)
+                   (user-error "No blackboard entry with ID %s" id))))
+
+  (defun sj-agent-tools--blackboard-set (state)
+    "Switch the entry at point to STATE and write its log line."
+    (unless (member state org-todo-keywords-1)
+      (user-error "Unknown state %S; use one of %s" state
+                  (string-join org-todo-keywords-1 ", ")))
+    (org-todo state)
+    ;; Non-interactively the state log waits on `post-command-hook';
+    ;; write it now, as the blackboard rules do.  A keyword that asks for a
+    ;; note (@) would pop an *Org Note* window in the user's frame, so log
+    ;; only the timestamped state line.
+    (when (memq #'org-add-log-note post-command-hook)
+      (when (eq org-log-note-how 'note)
+        (setq org-log-note-how 'state))
+      (org-add-log-note)))
+
+  (defun sj-agent-tools--blackboard-append (text)
+    "Add TEXT as the last lines of the entry at point."
+    (org-end-of-subtree t t)
+    (skip-chars-backward " \t\n")
+    (end-of-line)
+    (insert "\n" (string-trim text)))
+
+  (defun sj-agent-tools-blackboard-list (repo &optional states)
+    "List blackboard entries: state, ID and title, newest first.
+
+  MCP Parameters:
+    repo - absolute path of any directory in the repository (worktrees work)
+    states - optional comma-separated states to include (default TODO,INPROGRESS); ALL for every entry"
+    (let* ((want (if (or (null states) (string-empty-p states))
+                     '("TODO" "INPROGRESS")
+                   (split-string (upcase states) "[ ,]+" t)))
+           rows)
+      (with-current-buffer (sj-agent-tools--blackboard repo)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (while (re-search-forward "^\\* " nil t)
+           (let ((state (org-get-todo-state)))
+             (when (or (member "ALL" want) (member state want))
+               (push (format "%s  %s  %s%s" state (org-entry-get nil "ID")
+                             (substring-no-properties (org-get-heading t t t t))
+                             (if-let* ((tags (org-get-tags nil t)))
+                                 (concat "  :" (string-join tags ":") ":")
+                               ""))
+                     rows))))
+         (concat (format "%d entries in %s\n" (length rows) buffer-file-name)
+                 (sj-agent-tools--cap (nreverse rows)))))))
+
+  (defun sj-agent-tools-blackboard-set-state (repo id state &optional note)
+    "Change a blackboard entry's state, logging it, and optionally add a line under it.
+
+  MCP Parameters:
+    repo - absolute path of any directory in the repository (worktrees work)
+    id - the entry's ID property
+    state - new state, e.g. INPROGRESS when starting and DONE when finished
+    note - optional line to add under the entry: the plan when starting, the result when done"
+    (sj-agent-tools--blackboard-edit
+     repo (lambda ()
+            (sj-agent-tools--blackboard-goto id)
+            (sj-agent-tools--blackboard-set state)
+            (when (and note (not (string-empty-p note)))
+              (sj-agent-tools--blackboard-goto id)
+              (sj-agent-tools--blackboard-append note))))
+    (format "%s is now %s" id state))
+
+  (defun sj-agent-tools-blackboard-note (repo id text)
+    "Add a line (plan, update or result) at the end of a blackboard entry.
+
+  MCP Parameters:
+    repo - absolute path of any directory in the repository (worktrees work)
+    id - the entry's ID property
+    text - the line to add"
+    (sj-agent-tools--blackboard-edit
+     repo (lambda ()
+            (sj-agent-tools--blackboard-goto id)
+            (sj-agent-tools--blackboard-append text)))
+    (format "Added to %s" id))
+
+  (defun sj-agent-tools-blackboard-add (repo title &optional state body)
+    "Add a blackboard entry at the top and return its ID.
+
+  MCP Parameters:
+    repo - absolute path of any directory in the repository (worktrees work)
+    title - the heading text
+    state - optional state (default TODO); DONE for finished work that was not on the list
+    body - optional text under the heading, e.g. the one-line result of a DONE entry"
+    (sj-agent-tools--blackboard-edit
+     repo (lambda ()
+            (if (re-search-forward "^\\* " nil t)
+                (beginning-of-line)
+              (goto-char (point-max))
+              (unless (bolp) (insert "\n")))
+            (insert "* TODO " (string-trim title) "\n\n")
+            (forward-line -2)
+            (let ((id (org-id-get-create)))
+              (org-entry-put nil "CREATED" (format-time-string (org-time-stamp-format t t)))
+              (when (and state (not (string-empty-p state))
+                         (not (equal (upcase state) "TODO")))
+                (sj-agent-tools--blackboard-set (upcase state)))
+              (when (and body (not (string-empty-p body)))
+                (sj-agent-tools--blackboard-goto id)
+                (sj-agent-tools--blackboard-append body))
+              id))))
+
+  (defconst sj-agent-tools
+    '((sj-agent-tools-diagnostics "diagnostics"
+       "Flymake diagnostics (LSP errors and warnings via eglot, and other checkers) for a file or for every file open in Emacs under a project.  Only files open in Emacs are covered.")
+      (sj-agent-tools-selection "selection"
+       "What the user is looking at in Emacs: their selected text with file and line range, or the lines around the cursor if nothing is selected.  Use when the user says \"this\", \"here\" or \"the selection\".")
+      (sj-agent-tools-open-buffers "open_buffers"
+       "Files the user has open in Emacs under a project, marked if unsaved or visible.")
+      (sj-agent-tools-xref-definitions "xref_definitions"
+       "Where a symbol is defined, from Emacs's xref: the language server when eglot manages the file, Emacs Lisp's own index for .el files.  Give the file and line where the symbol is used; more precise than grep for overloaded or common names.")
+      (sj-agent-tools-xref-references "xref_references"
+       "Every use of a symbol across the project, from the language server (eglot).  Give the file and line where the symbol appears.  Needs eglot running for that project; otherwise use grep.")
+      (sj-agent-tools-describe-symbol "describe_symbol"
+       "Signature, source file, documentation and current default value of an Emacs Lisp function or variable in the user's running Emacs.")
+      (sj-agent-tools-blackboard-list "blackboard_list"
+       "List entries of the repository's .blackboard/todo.org, the task list shared with the user.")
+      (sj-agent-tools-blackboard-set-state "blackboard_set_state"
+       "Set a blackboard entry to INPROGRESS when starting it or DONE when finished, writing the org state log, and optionally add the plan or result line in the same call." t)
+      (sj-agent-tools-blackboard-note "blackboard_note"
+       "Add a line (plan, update, PR number or result) at the end of a blackboard entry." t)
+      (sj-agent-tools-blackboard-add "blackboard_add"
+       "Add a blackboard entry at the top.  Add TODO or SOMEDAY entries only when the user asks; for finished work that was not on the list, add it as DONE with the result as the body." t))
+    "Agent tools: (FUNCTION ID DESCRIPTION [WRITES]).  Parameters come from the docstring.")
+
+  (defun sj-agent-tools-start ()
+    "Register `sj-agent-tools' with mcp-server-lib and start it; idempotent.
+  emacs-mcp-stdio.sh calls this through emacsclient when a client connects."
+    (require 'mcp-server-lib-commands)
+    (unless (mcp-server-lib-server-registered-p sj-agent-tools-server-id)
+      (mcp-server-lib-register-server
+       :id sj-agent-tools-server-id
+       :name "emacs"
+       :instructions "Access to the user's live Emacs session: diagnostics, selection, open files, xref lookups and Emacs Lisp documentation, plus the repository's .blackboard/todo.org task list. Pass absolute paths; your working directory works for project-wide calls."
+       :tools (mapcar (pcase-lambda (`(,fn ,id ,desc ,writes))
+                        (list fn :id id :description desc :read-only (not writes)))
+                      sj-agent-tools)))
+    (unless (bound-and-true-p mcp-server-lib--running)
+      (mcp-server-lib-start))
+    t)
+
+  (defun sj-agent-tools-reload ()
+    "Re-register the agent tools after editing them."
+    (interactive)
+    (require 'mcp-server-lib-commands)
+    (when (mcp-server-lib-server-registered-p sj-agent-tools-server-id)
+      (mcp-server-lib-unregister-server sj-agent-tools-server-id))
+    (sj-agent-tools-start))
+
+  (defun sj-agent-tools--gptel-args (fn)
+    "Build gptel :args for FN from its arglist and MCP Parameters docstring."
+    (let ((doc (documentation fn t)) optional args)
+      (dolist (arg (help-function-arglist fn t))
+        (if (eq arg '&optional)
+            (setq optional t)
+          (let ((name (symbol-name arg)))
+            (push `(:name ,name :type string
+                    :description ,(and (string-match (format "^[ \t]+%s - \\(.*\\)$"
+                                                             (regexp-quote name))
+                                                     doc)
+                                       (match-string 1 doc))
+                    ,@(and optional '(:optional t)))
+                  args))))
+      (nreverse args)))
+
+  (with-eval-after-load 'gptel
+    (pcase-dolist (`(,fn ,id ,desc . ,_) sj-agent-tools)
+      (gptel-make-tool :name (concat "emacs_" id) :function fn :description desc
+                       :args (sj-agent-tools--gptel-args fn) :category "emacs")))
+#+end_src
+
 ** Misc for software dev
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package mermaid-mode :install-if (not my-phone-p))
