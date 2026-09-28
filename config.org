@@ -2789,9 +2789,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :config (require 'gptel-integrations))
 #+end_src
 
-*** Others
+*** herdr
 #+begin_src emacs-lisp :tangle "post-init.el"
-
   (when (not my-phone-p)
 
     (use-package herdr
@@ -2848,43 +2847,15 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
          (t (message "herdr: lantern is at %s, but Emacs could not attach"
                      pane)))))
 
-
-    (use-package inheritenv
-      :demand t
-      :ensure (:host github :repo "purcell/inheritenv"))
-
     (use-package monet
       :ensure (:host github :repo "stevemolitor/monet")
-      :init
-      (setq monet-prefix-key "C-c C-m")
-      )
+      :bind-keymap ("C-c C-m" . monet-command-map))
+    )
+#+end_src
 
-    (use-package claude-code
-      :demand t
-      :ensure (:host github :repo "stevemolitor/claude-code.el"
-                     :files ("*.el" (:exclude "images/*")))
-      :bind-keymap
-      ("C-c C-e" . claude-code-command-map) ;; or your preferred key
-      ;; Optionally define a repeat map so that "M" will cycle thru Claude auto-accept/plan/confirm modes after invoking claude-code-cycle-mode / C-c M.
-      :bind
-      (:repeat-map my-claude-code-map ("M" . claude-code-cycle-mode))
-      :config
-      ;; optional IDE integration with Monet
-      (add-hook 'claude-code-process-environment-functions #'monet-start-server-function)
-      (monet-mode 1)
-      (setq claude-code-terminal-backend 'ghostel)
-
-      (claude-code-mode))
-
-    (use-package claude-code-ide
-      :demand t
-      :ensure (:host github :repo "manzaltu/claude-code-ide.el")
-      :bind ("C-c C-'" . claude-code-ide-menu) ; Set your favorite keybinding
-      :custom
-      (claude-code-ide-terminal-backend 'ghostel)
-      (claude-code-ide-use-ide-diff nil)
-      :config
-      (claude-code-ide-emacs-tools-setup))
+*** agent-shell
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (when (not my-phone-p)
 
     (use-package agent-shell
       :ensure (:host github :repo "xenodium/agent-shell")
@@ -2907,8 +2878,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       :after agent-shell
       :commands (agent-shell-dashboard))
     )
-
 #+end_src
+
 ** Misc for software dev
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package mermaid-mode :install-if (not my-phone-p))
