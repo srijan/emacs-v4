@@ -4643,6 +4643,7 @@ article text.  With no search buffer there is nothing to redraw."
            ("C-c s U" . slack-user-select)
            ("C-c s s" . slack-search-from-messages)
            ("C-c s i" . slack-inbox)
+           ("C-c s n" . slack-inbox-next-unread)
            ("C-c s J" . slack-jump-to-browser)
            ("C-c s j" . slack-jump-to-app)
            ("C-c s e" . slack-insert-emoji)
