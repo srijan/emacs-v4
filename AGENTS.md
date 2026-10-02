@@ -32,6 +32,9 @@ emacs -Q --batch --eval '(progn (require (quote org)) (org-babel-tangle-file "~/
 - Check a changed block before tangling: extract the `#+begin_src`…`#+end_src` body to a temp file and run `check-parens` and a `read` loop on it through emacsclient.
 - Evaluate changed forms live with lexical binding (`load` a file with a `lexical-binding: t` cookie, or `(eval form t)`). Org-babel's `C-c C-c` evaluates dynamically, so closures behave differently there than in the tangled files, which all carry `lexical-binding: t`.
 - Package sources live in `var/elpaca/sources/<repo>/`; read them there when a package's behaviour matters (keymaps, hooks, buffer names). Builds are in `var/elpaca/builds/`.
+- If `emacsclient` fails, stop and say so; do not fall back to `emacs -Q --batch` to load packages. Under an agent sandbox, batch Emacs mis-resolves the elpaca load-path and cannot read some directories (`~/Applications`), so its failures say nothing about the real config.
+- Write scratch files to `$TMPDIR`, not `/tmp` or `var/`.
+- Never read or decrypt secrets (`private.json.age`, `~/.authinfo`, session tokens) to make something work. Packages load their own credentials through the `sj/` layer; if a credential seems missing, ask.
 - Do not call `backtrace-to-string` in hot paths (hooks, advice on frequent functions); it hangs Emacs.
 
 ## Git
