@@ -4852,6 +4852,43 @@ parameter of the websocket URL.  On an org-level token this is the E-id."
     (advice-add 'websocket-open :around #'my/slack-websocket-open-advice)
     ;; ------------------------------------------------------------------------
 
+    ;; Upstream runs :after-success even when users.info fails.  For a lazy
+    ;; lookup that clears the pending mark and redraws, the redraw asks for
+    ;; the same user again, and every pass prints "user_not_found".  Remember
+    ;; those IDs and stop asking; the skipped call does not run :after-success,
+    ;; so the pending mark stays set and the loop ends.
+    (defvar sj-slack-unknown-users (make-hash-table :test 'equal)
+      "User IDs that users.info answered with user_not_found.")
+
+    (defun sj-slack-user-info-request (orig user-id team &rest keys)
+      "Around `slack-user-info-request': ask about an unknown user only once."
+      (if (or (not (stringp user-id))
+              (string-empty-p user-id)
+              (string-prefix-p "B" user-id))
+          (apply orig user-id team keys)
+        (unless (gethash user-id sj-slack-unknown-users)
+          (slack-request
+           (slack-request-create
+            slack-user-info-url team
+            :params (list (cons "user" user-id))
+            :success
+            (cl-function
+             (lambda (&key data &allow-other-keys)
+               (slack-request-handle-error
+                (data "slack-user-info-request"
+                      (lambda (err)
+                        (if (equal err "user_not_found")
+                            (puthash user-id t sj-slack-unknown-users)
+                          (message "Failed to request slack-user-info-request: %s"
+                                   err))
+                        (slack-log (format "users.info %s: %s" user-id err)
+                                   team :level 'debug)))
+                (slack-team-set-users team (list (plist-get data :user))))
+               (when-let* ((cb (plist-get keys :after-success)))
+                 (funcall cb)))))))))
+
+    (advice-add 'slack-user-info-request :around #'sj-slack-user-info-request)
+
     (slack-register-team
      :name sj/employer
      :default t
