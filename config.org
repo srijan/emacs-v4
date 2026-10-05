@@ -4013,11 +4013,28 @@ Tools run inside the live Emacs: every loop is bounded, output is capped at
 #+end_src
 ** Document Reader
 #+begin_src emacs-lisp :tangle "post-init.el"
-  (when my-linux-p
-    (use-package reader
-      :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
-      	           :files ("*.el" "render-core.so")
-      	           :pre-build ("make" "all"))))
+  (use-package reader
+    :install-if (not my-phone-p)
+    :ensure (:host codeberg :repo "divyaranjan/emacs-reader"
+                   :files ("*.el" "render-core.*")
+                   :build (:before elpaca-build-link
+                                   (lambda (e)
+                                     (elpaca-with-dir e source
+                                       (unless (zerop (call-process "make" nil nil nil "all"))
+                                         (error "make all failed")))
+                                     (elpaca-continue e))))
+    :init
+    ;; MuPDF has no stable ABI: a module built against an older libmupdf
+    ;; segfaults Emacs on the first document it opens.
+    (let ((mod (expand-file-name "emacs-reader/render-core.dylib"
+                                 elpaca-sources-directory)))
+      (when (and (file-exists-p mod)
+                 (file-newer-than-file-p
+                  "/opt/homebrew/opt/mupdf/lib/libmupdf.dylib" mod))
+        (display-warning
+         'reader
+         "MuPDF was upgraded after render-core was built; opening a document will crash Emacs.  Run M-x elpaca-rebuild RET reader first."
+         :error))))
 #+end_src
 ** Social and Browser
 *** EWW Browser
