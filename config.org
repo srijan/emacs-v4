@@ -835,11 +835,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
 #+begin_src emacs-lisp :tangle "post-init.el"
 
   (use-package vertico
-    ;; (Note: It is recommended to also enable the savehist package.)
     :ensure t
-    ;; :demand t
     :commands vertico-mode
-    ;; :init (vertico-mode 1)
     :hook (elpaca-after-init . vertico-mode))
 
   (use-package orderless
@@ -857,11 +854,8 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
     ;; In addition to that, Marginalia also enhances Vertico by adding rich
     ;; annotations to the completion candidates displayed in Vertico's interface.
     :ensure t
-    ;; :demand t
     :commands (marginalia-mode marginalia-cycle)
-    ;; :init (marginalia-mode 1)
     :hook (elpaca-after-init . marginalia-mode))
-  ;; :hook (after-init . marginalia-mode)
 
   (use-package embark
     ;; Embark is an Emacs package that acts like a context menu, allowing
@@ -893,9 +887,7 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
                    (window-parameters (mode-line-format . none)))))
 
   (use-package embark-consult
-    :ensure t
-    :hook
-    (embark-collect-mode . consult-preview-at-point-mode))
+    :ensure t)
 
   (use-package consult
     :ensure t
@@ -953,9 +945,6 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
            :map minibuffer-local-map
            ("M-s" . consult-history)
            ("M-r" . consult-history))
-
-    ;; Enable automatic preview at point in the *Completions* buffer.
-    :hook (completion-list-mode . consult-preview-at-point-mode)
 
     :init
     ;; Optionally configure the register formatting. This improves the register
