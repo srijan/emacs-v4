@@ -1318,7 +1318,18 @@ One alternative can be to have a separate script to copy the required passwords 
     (org-startup-folded 'nofold)
     (org-startup-indented t)
     :config
-    
+
+    ;; `org-id-uuid' hashes (format "%s" (recent-keys)).  A wheel event over an
+    ;; inline image keeps the image's :data in the lossage, so every UUID
+    ;; printed megabytes and browser-gt (one UUID per request) froze Emacs for
+    ;; seconds on each Slack ping.  Same UUID, minus the lossage.
+    (define-advice org-id-uuid (:override () sj-skip-recent-keys)
+      (let ((rnd (md5 (format "%s%s%s" (random) (time-convert nil 'list) (emacs-pid)))))
+        (format "%s-%s-4%s-%x%s-%s"
+                (substring rnd 0 8) (substring rnd 8 12) (substring rnd 13 16)
+                (logior #b10000000 (logand #b10111111 (string-to-number (substring rnd 16 18) 16)))
+                (substring rnd 18 20) (substring rnd 20 32))))
+
     ;; Clocking
     (setopt org-clock-persist 'history)
     (setopt org-log-into-drawer t)
@@ -5207,7 +5218,8 @@ generation so stale evals are dropped.
       "Around `slack-ws-send': send PAYLOAD through the tab's websocket."
       (if (not sj-slack-browser-mode)
           (funcall orig ws payload team)
-        (slack-log-websocket-payload payload team t)
+        (when (slack-team-event-log-enabledp team)
+          (slack-log-websocket-payload payload team t))
         (when (slack-ws-retryable-payload-p payload)
           (push payload (oref ws waiting-send)))
         (if (oref ws connected)
