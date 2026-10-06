@@ -4051,6 +4051,8 @@ Tools run inside the live Emacs: every loop is bounded, output is capped at
     ;; `eww-open-in-new-buffer' (M-RET) leaves distinct, identifiable
     ;; buffers instead of a pile of "*eww*<N>"s.
     (setopt eww-auto-rename-buffer t)
+    ;; q (`quit-window') kills the eww buffer instead of burying it.
+    (setopt quit-window-kill-buffer '(eww-mode))
 
     ;; `eww-desktop-misc-data' (the save side) never captures where point
     ;; actually is on the *current* page -- `eww-data''s :point is only
@@ -4190,16 +4192,32 @@ Tools run inside the live Emacs: every loop is bounded, output is capped at
   ;; matchers like `mastodon' at all.  Divert here instead, only when a
   ;; handler matches and no prefix argument was given, leaving eww's
   ;; prefix-arg, same-page #anchor and history branches untouched.
+  ;;
+  ;; Hyperbole's M-RET (`hkey-either') on an eww link also lands here, as
+  ;; a plain `eww-follow-link'.  Make that one open a new buffer in a
+  ;; split.  Show the buffer before calling `eww', which then loads into
+  ;; it in place; a display override bound around `eww' would also catch
+  ;; its own `pop-to-buffer-same-window' and fill the other window too.
   (define-advice eww-follow-link (:around (fn &optional external mouse-event) sj-browse-url)
-    "Route links with a `sj-browse-url' handler through that handler."
+    "Route links with a `sj-browse-url' handler through that handler.
+  From Hyperbole's M-RET, open links to other pages in a new buffer in a split."
     (if external
         (funcall fn external mouse-event)
       (mouse-set-point mouse-event)
-      (let* ((url (eww--transform-url (get-text-property (point) 'shr-url)))
-             (handler (and url (sj-browse-url--handler url))))
-        (if handler
-            (sj-browse-url url)
-          (funcall fn external mouse-event)))))
+      (let ((url (eww--transform-url (get-text-property (point) 'shr-url))))
+        (cond
+         ((and url (sj-browse-url--handler url))
+          (sj-browse-url url))
+         ((and url (eq this-command 'hkey-either)
+               (not (string-match-p eww-use-browse-url url))
+               ;; #anchor on this page: let eww jump in place
+               (not (eww-same-page-p url (plist-get eww-data :url))))
+          (pop-to-buffer (generate-new-buffer "*eww*")
+                         '((display-buffer-pop-up-window display-buffer-use-some-window)
+                           (inhibit-same-window . t)))
+          (eww-mode)
+          (eww url))
+         (t (funcall fn external mouse-event))))))
 #+end_src
 *** Visit log
 #+begin_src emacs-lisp :tangle "post-init.el"
@@ -5445,6 +5463,8 @@ generation so stale evals are dropped.
     :config
     (defun my-hnreader-comments-readonly (dom url)
       (view-mode 1)
+      ;; q (`View-quit') quits the window, then kills the buffer, like eww.
+      (setq-local view-exit-action #'kill-buffer)
       (org-fold-show-all)
       )
     (advice-add
@@ -5519,7 +5539,7 @@ generation so stale evals are dropped.
     ;; `view-mode': it takes RET, which org needs for reddigg's elisp:
     ;; links (subs, "load more", comment threads).
     :bind (:map reddigg-view-mode-map
-           ("q" . quit-window)
+           ("q" . sj-reddigg-quit)
            ("SPC" . scroll-up-command)
            ("S-SPC" . scroll-down-command)
            ("DEL" . scroll-down-command))
@@ -5528,6 +5548,10 @@ generation so stale evals are dropped.
     (defun sj-reddigg-read-only ()
       "Make reddigg's org buffers read-only while `reddigg-view-mode' is on."
       (setq buffer-read-only reddigg-view-mode))
+    (defun sj-reddigg-quit ()
+      "Quit the reddigg window and kill its buffer, like q in eww."
+      (interactive)
+      (quit-window t))
     :config
     ;; reddigg re-renders by erasing the same buffers; let those writes
     ;; through the read-only flag.
