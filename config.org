@@ -2559,7 +2559,98 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
       (pcase (treemacs-current-visibility)
         (`visible (delete-window (treemacs-get-local-window)))
         (_ (treemacs-add-and-display-current-project))))
-    (treemacs-project-follow-mode 1)
+
+    ;; Scope: one treemacs buffer per (tab, project of the tab's current buffer).
+    ;; The tab carries `sj-treemacs-id' and `sj-treemacs-root' as extra tab
+    ;; params, which tab-bar copies across switches.  Each scope gets a private
+    ;; workspace that is never added to `treemacs--workspaces', so it is not
+    ;; persisted.
+    (defvar sj-treemacs--tab-counter 0)
+
+    (defun sj-treemacs--tab ()
+      "Current tab, stamped with a stable `sj-treemacs-id'."
+      (let ((tab (tab-bar--current-tab-find)))
+        (unless (alist-get 'sj-treemacs-id (cdr tab))
+          (setf (alist-get 'sj-treemacs-id (cdr tab))
+                (cl-incf sj-treemacs--tab-counter)))
+        tab))
+
+    (defun sj-treemacs--project-root (buffer)
+      "Canonical project.el root of BUFFER, or nil."
+      (with-current-buffer buffer
+        (unless (or treemacs--in-this-buffer (minibufferp)
+                    (file-remote-p default-directory))
+          (treemacs--current-builtin-project-function))))
+
+    (defun sj-treemacs--workspace (root)
+      "Unpersisted workspace holding just ROOT."
+      (let ((name (treemacs--filename root)))
+        (treemacs-workspace->create!
+         :name name
+         :projects (list (treemacs-project->create!
+                          :name name :path root
+                          :path-status (treemacs--get-path-status root))))))
+
+    (defclass sj-treemacs-tab-project-scope (treemacs-scope) () :abstract t)
+    (add-to-list 'treemacs-scope-types
+                 '(TabProject . sj-treemacs-tab-project-scope))
+
+    (cl-defmethod treemacs-scope->current-scope
+      ((_ (subclass sj-treemacs-tab-project-scope)))
+      "Return (TAB-ID . ROOT), registering its shelf on first use."
+      (let* ((tab (sj-treemacs--tab))
+             (root (or (alist-get 'sj-treemacs-root (cdr tab))
+                       (setf (alist-get 'sj-treemacs-root (cdr tab))
+                             (or (sj-treemacs--project-root (current-buffer))
+                                 (treemacs-canonical-path default-directory)))))
+             (scope (cons (alist-get 'sj-treemacs-id (cdr tab)) root)))
+        (unless (assoc scope treemacs--scope-storage)
+          (push (cons scope (treemacs-scope-shelf->create!
+                             :workspace (sj-treemacs--workspace root)))
+                treemacs--scope-storage))
+        scope))
+
+    (cl-defmethod treemacs-scope->current-scope-name
+      ((_ (subclass sj-treemacs-tab-project-scope)) scope)
+      (format "%s [%s]" (treemacs--filename (cdr scope)) (car scope)))
+
+    (defun sj-treemacs--show-current-scope ()
+      "Replace a visible treemacs window with the current scope's buffer."
+      (when-let* ((win (seq-find #'treemacs-is-treemacs-window? (window-list))))
+        (unless (eq (window-buffer win) (treemacs-get-local-buffer))
+          (delete-window win)
+          (save-selected-window (treemacs-select-window)))))
+
+    (defun sj-treemacs--follow-tab-project (frame)
+      "Point the tab's scope at the project of FRAME's selected buffer."
+      (when-let* (((eq frame (selected-frame)))
+                  (root (sj-treemacs--project-root (window-buffer)))
+                  (tab (sj-treemacs--tab))
+                  ((not (equal root (alist-get 'sj-treemacs-root (cdr tab))))))
+        (setf (alist-get 'sj-treemacs-root (cdr tab)) root)
+        ;; Window changes from inside a window-change hook are unsafe; defer.
+        (run-at-time 0 nil #'sj-treemacs--show-current-scope)))
+
+    (defun sj-treemacs--kill-tab-scopes (tab &rest _)
+      "Kill the treemacs buffers of every scope belonging to TAB."
+      (when-let* ((id (alist-get 'sj-treemacs-id (cdr tab))))
+        (dolist (entry treemacs--scope-storage)
+          (when (equal (car-safe (car entry)) id)
+            (treemacs--on-scope-kill (car entry))))))
+
+    (cl-defmethod treemacs-scope->setup
+      ((_ (subclass sj-treemacs-tab-project-scope)))
+      (add-hook 'window-buffer-change-functions #'sj-treemacs--follow-tab-project)
+      (add-hook 'window-selection-change-functions #'sj-treemacs--follow-tab-project)
+      (add-hook 'tab-bar-tab-pre-close-functions #'sj-treemacs--kill-tab-scopes))
+
+    (cl-defmethod treemacs-scope->cleanup
+      ((_ (subclass sj-treemacs-tab-project-scope)))
+      (remove-hook 'window-buffer-change-functions #'sj-treemacs--follow-tab-project)
+      (remove-hook 'window-selection-change-functions #'sj-treemacs--follow-tab-project)
+      (remove-hook 'tab-bar-tab-pre-close-functions #'sj-treemacs--kill-tab-scopes))
+
+    (treemacs-set-scope-type 'TabProject)
     :custom
     (treemacs-follow-after-init t)
     (treemacs-is-never-other-window t)
