@@ -1712,8 +1712,9 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     :after org
     :demand t
     :config
-    (setq khalel-import-org-file (expand-file-name "calendar.org" org-directory))
+    (setq khalel-import-org-file (sj/sync "docs/org/calendar.org"))
     (setq khalel-import-org-file-confirm-overwrite nil)
+    (add-to-list 'org-agenda-files khalel-import-org-file)
     (setq khalel-import-start-date "-3d")
     (setq khalel-import-end-date "+3d")
     (setq khalel-vdirsyncer-command "vdirsyncer")
@@ -1721,7 +1722,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (setq khalel-import-format
           (concat "* Calendar: {title} {cancelled}{partstat-symbol}\n"
                   ;; "SCHEDULED: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>\n"
-                  ":PROPERTIES:\n:CALENDAR: {calendar}\n:LOCATION: {location}\n:ID: {uid}\n:END:\n"
+                  ":PROPERTIES:\n:TITLE: {title}\n:CALENDAR: {calendar}\n:LOCATION: {location}\n:ID: {uid}\n:END:\n"
                   "- When: <{start-date-long} {start-time}>--<{end-date-long} {end-time}>\n"
                   "- Where: {location}\n"
                   "- Description: {description}\n"
@@ -1738,156 +1739,205 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
            "You can use [[elisp:(khalel-run-vdirsyncer)][khalel-run-vdirsyncer]] to synchronize with remote calendars.\n\n"
            "Consider adding this file to your list of agenda files so that events show up there.\n\n")))
 
-  (defun my/org-calendar-html-to-text ()
-    "Convert HTML in the first line of the Description field to plain text using pandoc."
+  (defun sj-calendar--html-to-text (s)
+    "Return S as plain text when it looks like HTML, using pandoc."
+    (if (and (string-match-p "<[^>]+>" s) (executable-find "pandoc"))
+        (with-temp-buffer
+          (insert s)
+          (shell-command-on-region (point-min) (point-max)
+                                   "pandoc -f html -t plain --wrap=none" t t)
+          (string-trim (buffer-string)))
+      s))
+
+  (defun sj-calendar--event-marker ()
+    "Marker of the calendar.org event at point (agenda or file), or nil."
+    (let ((marker (or (org-get-at-bol 'org-marker) (point-marker))))
+      (when (and (bound-and-true-p khalel-import-org-file)
+                 (equal (buffer-file-name (marker-buffer marker))
+                        (expand-file-name khalel-import-org-file)))
+        marker)))
+
+  (defun sj-calendar--event-at-point ()
+    "Return a plist for the khalel event at point, in the agenda or calendar.org."
+    (let ((marker (or (sj-calendar--event-marker)
+                      (user-error "Not an event from %s" khalel-import-org-file))))
+      (org-with-point-at marker
+        (org-back-to-heading t)
+        (let ((end (save-excursion (org-end-of-subtree t t)))
+              (uid (org-string-nw-p (org-entry-get nil "ID")))
+              (title (org-string-nw-p (org-entry-get nil "TITLE")))
+              (location (org-string-nw-p (org-entry-get nil "LOCATION")))
+              (calendar (org-string-nw-p (org-entry-get nil "CALENDAR"))))
+          (unless (re-search-forward "^- When: \\(<[^>]*>\\)--\\(<[^>]*>\\)" end t)
+            (user-error "No \"- When:\" line in this event"))
+          (let ((start (match-string-no-properties 1))
+                (stop (match-string-no-properties 2)))
+            (list :title (if title (concat "Calendar: " title) (org-get-heading t t t t))
+                  ;; A recurring event's instances share the UID; the start
+                  ;; tells them apart.
+                  :key (and uid (format "%s %s" uid (string-trim (substring start 1 -1))))
+                  :start start :end stop
+                  :all-day (not (string-match-p "[0-9]:[0-9]" start))
+                  :location location :calendar calendar
+                  :description
+                  (and (re-search-forward
+                        "^- Description: \\(\\(?:.\\|\n\\)*?\\)\n- URL:" end t)
+                       (org-string-nw-p
+                        (string-trim (match-string-no-properties 1))))))))))
+
+  (defun sj-calendar--estimate (minutes)
+    "Mindwtr time estimate for MINUTES, as Mindwtr's `minutesToTimeEstimate'."
+    (pcase minutes
+      (5 "5min") (10 "10min") (15 "15min") (30 "30min")
+      (60 "1hr") (120 "2hr") (180 "3hr") (240 "4hr")
+      (_ (format "custom:%d" minutes))))
+
+  (defun sj-calendar--find-task (key)
+    "Marker of the Mindwtr task whose CALENDAR_EVENT property is KEY, or nil."
+    (with-current-buffer (find-file-noselect mindwtr-file)
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (when (re-search-forward
+              (format "^[ \t]*:CALENDAR_EVENT:[ \t]*%s[ \t]*$" (regexp-quote key))
+              nil t)
+         (org-back-to-heading t)
+         (point-marker)))))
+
+  (defun sj-calendar--minutes (start stop)
+    "Minutes between org timestamps START and STOP, at least 1."
+    (max 1 (round (float-time (time-subtract (org-time-string-to-time stop)
+                                             (org-time-string-to-time start)))
+                  60)))
+
+  (defun sj-calendar--clock-line (start stop)
+    "A closed CLOCK line from org timestamp START to STOP."
+    (let ((minutes (sj-calendar--minutes start stop)))
+      (format "CLOCK: [%s]--[%s] => %d:%02d\n"
+              (substring start 1 -1) (substring stop 1 -1)
+              (/ minutes 60) (% minutes 60))))
+
+  (defun sj-calendar--complete-task (task ev)
+    "Mark the Mindwtr TASK done for the past event EV.
+  CLOSED is the event end (now, for an all-day event).  The event's CLOCK line is added only when TASK
+  has no CLOCK lines, so time clocked on it by hand is not counted twice."
+    (with-current-buffer (marker-buffer task)
+      (org-with-point-at task
+        (let ((all-day (plist-get ev :all-day))
+              (start (plist-get ev :start))
+              (stop (plist-get ev :end)))
+          (unless (or all-day
+                      (save-excursion
+                        (re-search-forward "^[ \t]*CLOCK:" (org-entry-end-position) t)))
+            (save-excursion
+              (let ((org-log-into-drawer t))
+                (goto-char (org-log-beginning t))
+                (insert (sj-calendar--clock-line start stop)))))
+          (let ((org-log-done nil) (org-todo-log-states nil))
+            (org-todo (mindwtr-model-status->keyword 'task "done")))
+          (org-add-planning-info
+           'closed (if all-day (current-time) (org-time-string-to-time stop)))))
+      (save-buffer))
+    (message "Mindwtr task completed: %s" (plist-get ev :title)))
+
+  (defun sj-calendar-event-to-mindwtr (&optional done)
+    "Return the Mindwtr task for the khalel event at point, creating it if needed.
+  A new task gets what Mindwtr desktop's \"Create task\" on a calendar event
+  copies: title, start time, length as the time estimate, location, and the
+  description plus a \"Calendar:\" line.  It is NEXT under Single Actions,
+  with a CALENDAR_EVENT property (UID and start) that finds it next time.
+  Clocking in on an event calls this, then clocks in on the task.
+
+  With prefix argument DONE, log a meeting that already happened: the task
+  is DONE, closed at the event end, with a CLOCK line covering the event,
+  which mindwtr syncs as time spent.  An existing task is completed the same
+  way, keeping any time already clocked on it instead of the event's."
+    (interactive "P")
+    (require 'mindwtr)
+    (let* ((ev (sj-calendar--event-at-point))
+           (key (plist-get ev :key))
+           (existing (and key (sj-calendar--find-task key))))
+      (cond
+       ((and existing done)
+        (sj-calendar--complete-task existing ev)
+        existing)
+       (existing
+        (when (called-interactively-p 'any)
+          (message "Mindwtr task exists: %s" (plist-get ev :title)))
+        existing)
+       (t
+        (let* ((start (plist-get ev :start))
+               (stop (plist-get ev :end))
+               (all-day (plist-get ev :all-day))
+               (minutes (unless all-day (sj-calendar--minutes start stop)))
+               (description (plist-get ev :description))
+               (calendar (plist-get ev :calendar))
+               (body (string-join
+                      (delq nil (list (and description (sj-calendar--html-to-text description))
+                                      (and calendar (concat "Calendar: " calendar))))
+                      "\n\n"))
+               (planning
+                (concat (if all-day
+                            (format "DEADLINE: <%s>" (string-trim (substring start 1 -1)))
+                          (concat "SCHEDULED: " start))
+                        ;; An all-day event has no end time; close it now.
+                        (when done
+                          (format " CLOSED: [%s]"
+                                  (if all-day
+                                      (format-time-string "%Y-%m-%d %a %H:%M")
+                                    (substring stop 1 -1))))))
+               task)
+          (with-current-buffer (find-file-noselect mindwtr-file)
+            (org-with-wide-buffer
+             (goto-char (point-min))
+             (goto-char (or (mindwtr-heading-find-role "single-actions")
+                            (user-error "No Single Actions container in %s" mindwtr-file)))
+             (let ((level (1+ (org-current-level))))
+               (org-end-of-meta-data t)
+               (setq task (point-marker))
+               (insert (make-string level ?*) " "
+                       (mindwtr-model-status->keyword 'task (if done "done" "next")) " "
+                       (plist-get ev :title) "\n"
+                       planning "\n"
+                       ":PROPERTIES:\n:MW_TYPE: task\n:MW_ID: " (mindwtr-util-uuid) "\n"
+                       (if minutes
+                           (format ":MW_TIME_ESTIMATE: %s\n" (sj-calendar--estimate minutes))
+                         "")
+                       (if (plist-get ev :location)
+                           (format ":MW_LOCATION: %s\n" (plist-get ev :location))
+                         "")
+                       (if key (format ":CALENDAR_EVENT: %s\n" key) "")
+                       ":END:\n"
+                       (if (and done (not all-day))
+                           (concat ":LOGBOOK:\n" (sj-calendar--clock-line start stop) ":END:\n")
+                         "")
+                       (if (string-empty-p body) "" (concat body "\n")))))
+            (save-buffer))
+          (message "Mindwtr task %s: %s" (if done "logged" "created") (plist-get ev :title))
+          task)))))
+
+  (defun sj-calendar-log-meeting ()
+    "Log the past khalel event at point as a DONE Mindwtr task with its clock time."
     (interactive)
-    (save-excursion
-      (org-back-to-heading t)
-      (let ((end (save-excursion (org-end-of-subtree t t))))
-        (when (re-search-forward "^[[:space:]]*- Description: " end t)
-          (let ((first-line-start (point))
-                (first-line-end (line-end-position)))
-            (let ((first-line-content (buffer-substring-no-properties first-line-start first-line-end)))
-              (when (string-match-p "<[^>]+>" first-line-content)
-                (let ((plain-text (with-temp-buffer
-                                    (insert first-line-content)
-                                    (shell-command-on-region
-                                     (point-min) (point-max)
-                                     "pandoc -f html -t plain --wrap=none"
-                                     t t)
-                                    (string-trim (buffer-string)))))
-                  (delete-region first-line-start first-line-end)
-                  (insert plain-text)
-                  (message "Converted HTML to plain text in first line")))))))))
+    (sj-calendar-event-to-mindwtr t))
 
-  (defun my/copy-calendar-task-to-inbox (orig-fun &rest args)
-    "Copy task from calendar.org to inbox.org before clocking in"
-    (let* ((marker (org-get-at-bol 'org-marker))
-           (file-name (if marker
-                          (buffer-file-name (marker-buffer marker))
-                        (buffer-file-name)))
-           (calendar-file (expand-file-name "calendar.org" org-directory))
-           (inbox-file (expand-file-name "inbox.org" org-directory)))
-      (if (and file-name
-               (string= file-name calendar-file))
-          (save-excursion
-            (when marker
-              (org-goto-marker-or-bmk marker))
-            (let* ((task-title (org-get-heading t t t t))
-                   (task-body (org-get-entry))
-                   (inbox-buffer (find-file-noselect inbox-file)))
-              (with-current-buffer inbox-buffer
-                (let ((original-point (point-max)))
-                  (goto-char original-point)
-                  (insert "\n* " task-title "\n" task-body)
-                  (my/org-calendar-html-to-text)
-                  (save-buffer)
-                  (goto-char original-point)
-                  (forward-line 1)
-                  (apply orig-fun args)))))
-        ;; If not in calendar.org, just run the original function
-        (apply orig-fun args))))
+  (defun sj-calendar--clock-in-on-task (orig-fun &optional select &rest args)
+    "On a calendar event, clock in on its Mindwtr task, creating it if needed."
+    (if (and (not select) (sj-calendar--event-marker))
+        (org-with-point-at (sj-calendar-event-to-mindwtr)
+          (apply orig-fun select args))
+      (apply orig-fun select args)))
 
-  (advice-add 'org-clock-in :around #'my/copy-calendar-task-to-inbox)
+  (advice-add 'org-clock-in :around #'sj-calendar--clock-in-on-task)
 
-  (defun my/complete-calendar-task ()
-    "Copy current calendar task to inbox.org, add logbook entry, and mark done."
-    (interactive)
-    (let* ((calendar-file (expand-file-name "calendar.org" org-directory))
-           (inbox-file (expand-file-name "inbox.org" org-directory))
-           (marker (or (org-get-at-bol 'org-marker) (point-marker)))
-           (source-file (if marker
-                            (buffer-file-name (marker-buffer marker))
-                          (buffer-file-name))))
-      
-      ;; Check if the task is from calendar.org
-      (unless (and source-file (string= source-file calendar-file))
-        (error "This function should be called on tasks from calendar.org"))
-      
-      ;; Work with the task at the marker position
-      (with-current-buffer (marker-buffer marker)
-        (save-excursion
-          (goto-char marker)
-          (org-back-to-heading t)
-          
-          ;; Get task information - but limit to current entry only
-          (let* ((task-title (org-get-heading t t t t))
-                 (entry-start (point))
-                 (entry-end (save-excursion (org-end-of-subtree t t)))
-                 ;; Extract start and end times from THIS entry only
-                 (when-line (save-excursion
-                              (goto-char entry-start)
-                              (if (re-search-forward "- When: \\(<.*?>\\)--\\(<.*?>\\)" entry-end t)
-                                  (list (match-string 1) (match-string 2))
-                                nil))))
-            
-            (unless when-line
-              (error "Could not find start and end times in this task"))
-            
-            (let* ((start-time-angular (car when-line))
-                   (end-time-angular (cadr when-line))
-                   ;; Convert angular brackets to square brackets for CLOCK entries
-                   (start-time-square (replace-regexp-in-string "<\\|>" (lambda (match) (if (string= match "<") "[" "]")) start-time-angular))
-                   (end-time-square (replace-regexp-in-string "<\\|>" (lambda (match) (if (string= match "<") "[" "]")) end-time-angular))
-                   ;; Calculate duration
-                   (start-time (org-parse-time-string start-time-angular))
-                   (end-time (org-parse-time-string end-time-angular))
-                   (start-seconds (+ (* (nth 2 start-time) 3600) (* (nth 1 start-time) 60)))
-                   (end-seconds (+ (* (nth 2 end-time) 3600) (* (nth 1 end-time) 60)))
-                   (duration-seconds (- end-seconds start-seconds))
-                   (duration-hours (/ duration-seconds 3600))
-                   (duration-minutes (/ (% duration-seconds 3600) 60))
-                   (duration-string (format "%d:%02d" duration-hours duration-minutes)))
-              
-              ;; Parse the entry content more carefully
-              (goto-char entry-start)
-              (forward-line 1) ;; Skip the heading
-              (let* ((content-start (point))
-                     (properties-start (and (re-search-forward "^:PROPERTIES:$" entry-end t)
-                                            (line-beginning-position)))
-                     (properties-end (and properties-start
-                                          (re-search-forward "^:END:$" entry-end t)
-                                          (line-end-position)))
-                     (properties-content (and properties-start properties-end
-                                              (buffer-substring-no-properties properties-start properties-end)))
-                     (remaining-content (and properties-end
-                                             (buffer-substring-no-properties (1+ properties-end) entry-end)))
-                     ;; Convert angular brackets to square brackets only on "- When:" lines
-                     (remaining-content-fixed (and remaining-content
-                                                   (replace-regexp-in-string 
-                                                    "^- When: <\\([^>]+\\)>--<\\([^>]+\\)>$"
-                                                    "- When: [\\1]--[\\2]"
-                                                    remaining-content nil nil nil))))
-                
-                ;; Copy task to inbox.org
-                (with-current-buffer (find-file-noselect inbox-file)
-                  (goto-char (point-max))
-                  (insert "\n* DONE " task-title "\n")
-                  ;; Set CLOSED timestamp to match event end time
-                  (insert "CLOSED: " end-time-square "\n")
-                  
-                  ;; Insert properties drawer if it exists
-                  (when properties-content
-                    (insert properties-content "\n"))
-                  
-                  ;; Insert logbook
-                  (insert ":LOGBOOK:\n")
-                  (insert "CLOCK: " start-time-square "--" end-time-square " => " duration-string "\n")
-                  (insert ":END:\n")
-                  
-                  ;; Insert remaining content (the body after properties) with fixed When line
-                  (when remaining-content-fixed
-                    (insert remaining-content-fixed))
-
-                  (my/org-calendar-html-to-text)
-                  
-                  ;; Save the inbox file
-                  (save-buffer)
-                  
-                  ;; Position cursor at the new task
-                  (org-back-to-heading t)))
-              
-              (message "Calendar task copied to inbox.org and marked as DONE with logbook entry")))))))
+  ;; Engage reads only `mindwtr-file'; add the calendar so meetings show in
+  ;; its Today block.  The tags-todo blocks match Mindwtr keywords, which
+  ;; calendar.org has none of.
+  ;; ponytail: advises a private mindwtr function; move to a mindwtr option
+  ;; if it gets renamed.
+  (with-eval-after-load 'mindwtr-agenda
+    (advice-add 'mindwtr-agenda--files :filter-return
+                (lambda (files) (append files (list khalel-import-org-file)))
+                '((name . sj-calendar-in-mindwtr-agenda))))
 
 #+end_src
 ** Hyperbole / Dashboard
