@@ -5752,6 +5752,26 @@ generation so stale evals are dropped.
        (let ((browse-url-browser-function sj-browse-url-default-handler))
          (lem-ui-url-lookup url)))))
 #+end_src
+*** YouTube in mpv
+mpv resolves YouTube URLs through yt-dlp itself; empv drives that mpv over
+its IPC socket. =C-c v= is the control map (=t= toggle, =n=/=N= next/prev,
+=x= quit; =C-h= after the prefix lists the rest).
+#+begin_src emacs-lisp :tangle "post-init.el"
+  (use-package empv
+    :install-if (not my-phone-p)
+    :bind-keymap ("C-c v" . empv-map)
+    :init
+    (sj-browse-url-set-handler-rx
+     'youtube
+     '((seq line-start "http" (zero-or-one "s") "://"
+            (zero-or-one (or "www." "m."))
+            (or (seq "youtube.com/" (or "watch?" "shorts/" "live/"))
+                "youtu.be/")))
+     (lambda (url &rest _) (empv-play url)))
+    :config
+    ;; empv starts mpv audio-only by default.
+    (setopt empv-mpv-args (remove "--no-video" empv-mpv-args)))
+#+end_src
 *** GitHub
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package github-explorer
