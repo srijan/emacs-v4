@@ -5725,6 +5725,33 @@ generation so stale evals are dropped.
      (lambda (url &rest _) (reddigg-view-comments url)))
     )
 #+end_src
+*** Lemmy
+#+begin_src emacs-lisp :tangle "post-init.el"
+  ;; M-x lem prompts for login once and stores the token in lem.plstore.
+  ;; Renders markdown through `markdown-command' (pandoc, set above).
+  (use-package lem
+    :install-if (not my-phone-p)
+    :commands lem-ui-url-lookup
+    :custom (lem-instance-url "https://programming.dev")
+    :init
+    ;; Registered after mastodon's handler, so it takes precedence over
+    ;; mastodon's /u/ and /comment/ patterns on these hosts.  Lookup
+    ;; failure falls back to `browse-url'; bind the default handler so
+    ;; it does not loop back here.
+    ;; shortcut: fixed host list, add hosts here as they come up.
+    (sj-browse-url-set-handler-rx
+     'lemmy
+     '((seq line-start "https://"
+            (or "lemmy.world" "lemmy.ml" "programming.dev" "sh.itjust.works"
+                "beehaw.org" "lemmy.dbzer0.com" "feddit.org" "lemmy.ca"
+                "lemmy.zip" "discuss.tchncs.de" "lemmy.blahaj.zone" "sopuli.xyz"
+                "slrpnk.net" "infosec.pub" "lemmy.sdf.org" "reddthat.com"
+                "feddit.nl" "feddit.uk" "aussie.zone" "startrek.website")
+            "/" (or "post/" "comment/" "c/" "u/")))
+     (lambda (url &rest _)
+       (let ((browse-url-browser-function sj-browse-url-default-handler))
+         (lem-ui-url-lookup url)))))
+#+end_src
 *** GitHub
 #+begin_src emacs-lisp :tangle "post-init.el"
   (use-package github-explorer
