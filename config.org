@@ -522,7 +522,8 @@ themes declare =:background-mode= in their theme properties.
       :config
 
       (modus-themes-include-derivatives-mode 1)
-      (setopt modus-themes-to-rotate '(ef-maris-dark ef-elea-dark ef-winter ef-duo-dark ef-maris-light ef-elea-light ef-spring))
+      ;; setq: the defcustom type lists only modus themes, though derivatives work.
+      (setq modus-themes-to-rotate '(ef-maris-dark ef-elea-dark ef-winter ef-duo-dark ef-maris-light ef-elea-light ef-spring))
 
       ;; Theme and `global-text-scale-adjust' height survive restarts via this file.
       (defvar sj-appearance-file (locate-user-emacs-file "sj-appearance.eld"))
@@ -1174,8 +1175,9 @@ I'm using tool-bar+ to be able to enable the tool-bar for certain modes/buffers.
         (kill-ring-save (point) (line-end-position))
         (ghostel-send-key "k" "ctrl"))
 
-      (add-to-list 'project-switch-commands '(ghostel-project "Ghostel") t)
-      (add-to-list 'project-switch-commands '(ghostel-project-list-buffers "Ghostel buffers") t)
+      (with-eval-after-load 'project
+        (add-to-list 'project-switch-commands '(ghostel-project "Ghostel") t)
+        (add-to-list 'project-switch-commands '(ghostel-project-list-buffers "Ghostel buffers") t))
       (add-to-list 'ghostel-eval-cmds '("magit-status-setup-buffer" magit-status-setup-buffer))
 
       (setopt ghostel-tramp-shell-integration t)
@@ -1945,7 +1947,10 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
   (use-package hyperbole
     :demand t
     :config
-    (hyperbole-mode 1))
+    ;; shortcut: `hyperbole--enable-mode' calls (set-variable mode-line-default-help-echo ...)
+    ;; unquoted, so sleek-modeline's nil value makes it set `nil'; drop once fixed upstream.
+    (let ((mode-line-default-help-echo 'mode-line-default-help-echo))
+      (hyperbole-mode 1)))
 
   ;;;; Dashboard action commands (also usable from M-x and the Android tool bar)
 
@@ -2377,9 +2382,10 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     (setopt howm-view-use-grep t)
     (setopt howm-view-grep-command "rg")
     (setopt howm-view-grep-option "-nH --no-heading --color never")
-    (setopt howm-view-grep-extended-option nil)
+    ;; setq: howm handles nil (omit the flag), but the defcustom type says string.
+    (setq howm-view-grep-extended-option nil)
     (setopt howm-view-grep-fixed-option "-F")
-    (setopt howm-view-grep-expr-option nil)
+    (setq howm-view-grep-expr-option nil)
     (setopt howm-view-grep-file-stdin-option nil)
 
     ;; Buffer names from note titles instead of bare timestamp filenames.
@@ -4191,7 +4197,7 @@ Tools run inside the live Emacs: every loop is bounded, output is capped at
     ;; Rename each eww buffer after its page title so navigating with
     ;; `eww-open-in-new-buffer' (M-RET) leaves distinct, identifiable
     ;; buffers instead of a pile of "*eww*<N>"s.
-    (setopt eww-auto-rename-buffer t)
+    (setopt eww-auto-rename-buffer 'title)
     ;; q (`quit-window') kills the eww buffer instead of burying it.
     (setopt quit-window-kill-buffer '(eww-mode))
 
@@ -5739,7 +5745,8 @@ generation so stale evals are dropped.
   (use-package micropub
     :install-if (not my-phone-p)
     :ensure nil
-    :demand t
+    ;; Load after elpaca activates its transient; requiring it inline pulls in the built-in one.
+    :hook (elpaca-after-init . (lambda () (require 'micropub)))
     :load-path "~/workspace/srijan/micropub.el"
     :config
     (setopt micropub-me "https://srijan.ch")
