@@ -2823,7 +2823,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
            ("C-c g f"   . gptel-add-file)
            ("C-c g t"   . gptel-tools)
            ("C-c g o t" . gptel-org-set-topic)
-           ("C-c g o p" . gptel-org-set-properties))
+           ("C-c g o p" . gptel-org-set-properties)
+           ("C-c g S"   . sj-gptel-summarize))
     :custom
     (gptel-default-mode 'org-mode)
     (gptel-org-branching-context 'nil)
@@ -2843,6 +2844,26 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
     ;; Login is prompted on first use; force with M-x gptel-openai-oauth-login.
     (setq gptel-model 'gpt-5.6-sol
           gptel-backend (gptel-make-openai-oauth "OpenAI"))
+
+    (defun sj-gptel-summarize ()
+      "Summarize the current buffer (or region) in a new gptel chat.
+    Works from any reader buffer: eww, elfeed-show, reddigg, hnreader, lem.
+    The text goes into the chat's system prompt, so follow-ups can ask about it."
+      (interactive)
+      (let* ((text (if (use-region-p)
+                       (buffer-substring-no-properties (region-beginning) (region-end))
+                     (buffer-substring-no-properties (point-min) (point-max))))
+             (buf (gptel (generate-new-buffer-name
+                          (format "*summary: %s*" (buffer-name))))))
+        (with-current-buffer buf
+          (setq-local gptel-system-prompt
+                      (concat "Summarize the article below: its main claim, the key points as a short list, "
+                              "and anything surprising. If it includes a comment thread, add the main "
+                              "points of agreement and disagreement. Answer follow-up questions from the "
+                              "article. Respond in Org markup.\n\n<article>\n" text "\n</article>"))
+          (insert "Summarize this.")
+          (gptel-send))
+        (pop-to-buffer buf)))
 
     (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "* @srijan\n"
           (alist-get 'org-mode gptel-response-prefix-alist) "** @assistant\n")
