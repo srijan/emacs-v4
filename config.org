@@ -1834,16 +1834,13 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                        (org-string-nw-p
                         (string-trim (match-string-no-properties 1))))))))))
 
-  (defun sj-calendar--estimate (minutes)
-    "Mindwtr time estimate for MINUTES, as Mindwtr's `minutesToTimeEstimate'."
-    (pcase minutes
-      (5 "5min") (10 "10min") (15 "15min") (30 "30min")
-      (60 "1hr") (120 "2hr") (180 "3hr") (240 "4hr")
-      (_ (format "custom:%d" minutes))))
+  (defun sj-calendar--effort (minutes)
+    "Org Effort (H:MM) for MINUTES; nirvana syncs it as the time estimate."
+    (format "%d:%02d" (/ minutes 60) (% minutes 60)))
 
   (defun sj-calendar--find-task (key)
-    "Marker of the Mindwtr task whose CALENDAR_EVENT property is KEY, or nil."
-    (with-current-buffer (find-file-noselect mindwtr-file)
+    "Marker of the Nirvana task whose CALENDAR_EVENT property is KEY, or nil."
+    (with-current-buffer (find-file-noselect nirvana-file)
       (org-with-wide-buffer
        (goto-char (point-min))
        (when (re-search-forward
@@ -1866,7 +1863,7 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
               (/ minutes 60) (% minutes 60))))
 
   (defun sj-calendar--complete-task (task ev)
-    "Mark the Mindwtr TASK done for the past event EV.
+    "Mark the Nirvana TASK done for the past event EV.
   CLOSED is the event end (now, for an all-day event).  The event's CLOCK line is added only when TASK
   has no CLOCK lines, so time clocked on it by hand is not counted twice."
     (with-current-buffer (marker-buffer task)
@@ -1882,26 +1879,28 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                 (goto-char (org-log-beginning t))
                 (insert (sj-calendar--clock-line start stop)))))
           (let ((org-log-done nil) (org-todo-log-states nil))
-            (org-todo (mindwtr-model-status->keyword 'task "done")))
+            (org-todo "DONE"))
           (org-add-planning-info
            'closed (if all-day (current-time) (org-time-string-to-time stop)))))
       (save-buffer))
-    (message "Mindwtr task completed: %s" (plist-get ev :title)))
+    (message "Nirvana task completed: %s" (plist-get ev :title)))
 
-  (defun sj-calendar-event-to-mindwtr (&optional done)
-    "Return the Mindwtr task for the khalel event at point, creating it if needed.
-  A new task gets what Mindwtr desktop's \"Create task\" on a calendar event
-  copies: title, start time, length as the time estimate, location, and the
-  description plus a \"Calendar:\" line.  It is NEXT under Single Actions,
+  (defun sj-calendar-event-to-nirvana (&optional done)
+    "Return the Nirvana task for the khalel event at point, creating it if needed.
+  A new task gets the title, the start as SCHEDULED (DEADLINE for an all-day
+  event), the length as Effort (Nirvana's time estimate), and a note with
+  the description, location and calendar.  It is NEXT under Single Actions,
   with a CALENDAR_EVENT property (UID and start) that finds it next time.
-  Clocking in on an event calls this, then clocks in on the task.
+  The next sync sends it.  Clocking in on an event calls this, then clocks
+  in on the task.
 
   With prefix argument DONE, log a meeting that already happened: the task
-  is DONE, closed at the event end, with a CLOCK line covering the event,
-  which mindwtr syncs as time spent.  An existing task is completed the same
-  way, keeping any time already clocked on it instead of the event's."
+  is DONE, closed at the event end, with a CLOCK line covering the event
+  (the clock stays in org; Nirvana has no time tracking).  An existing task
+  is completed the same way, keeping any time already clocked on it instead
+  of the event's."
     (interactive "P")
-    (require 'mindwtr)
+    (require 'nirvana)
     (let* ((ev (sj-calendar--event-at-point))
            (key (plist-get ev :key))
            (existing (and key (sj-calendar--find-task key))))
@@ -1922,6 +1921,8 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                (calendar (plist-get ev :calendar))
                (body (string-join
                       (delq nil (list (and description (sj-calendar--html-to-text description))
+                                      (and (plist-get ev :location)
+                                           (concat "Location: " (plist-get ev :location)))
                                       (and calendar (concat "Calendar: " calendar))))
                       "\n\n"))
                (planning
@@ -1935,25 +1936,20 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                                       (format-time-string "%Y-%m-%d %a %H:%M")
                                     (substring stop 1 -1))))))
                task)
-          (with-current-buffer (find-file-noselect mindwtr-file)
+          (with-current-buffer (find-file-noselect nirvana-file)
             (org-with-wide-buffer
              (goto-char (point-min))
-             (goto-char (or (mindwtr-heading-find-role "single-actions")
-                            (user-error "No Single Actions container in %s" mindwtr-file)))
+             (goto-char (or (nirvana-heading-find-role "single-actions")
+                            (user-error "No Single Actions container in %s" nirvana-file)))
              (let ((level (1+ (org-current-level))))
                (org-end-of-meta-data t)
                (setq task (point-marker))
                (insert (make-string level ?*) " "
-                       (mindwtr-model-status->keyword 'task (if done "done" "next")) " "
+                       (if done "DONE" "NEXT") " "
                        (plist-get ev :title) "\n"
                        planning "\n"
-                       ":PROPERTIES:\n:MW_TYPE: task\n:MW_ID: " (mindwtr-util-uuid) "\n"
-                       (if minutes
-                           (format ":MW_TIME_ESTIMATE: %s\n" (sj-calendar--estimate minutes))
-                         "")
-                       (if (plist-get ev :location)
-                           (format ":MW_LOCATION: %s\n" (plist-get ev :location))
-                         "")
+                       ":PROPERTIES:\n:NV_ID: " (nirvana-util-uuid) "\n:NV_TYPE: task\n"
+                       (if minutes (format ":Effort: %s\n" (sj-calendar--effort minutes)) "")
                        (if key (format ":CALENDAR_EVENT: %s\n" key) "")
                        ":END:\n"
                        (if (and done (not all-day))
@@ -1961,32 +1957,26 @@ The agent-side protocol lives in =~/.claude/CLAUDE.md=.
                          "")
                        (if (string-empty-p body) "" (concat body "\n")))))
             (save-buffer))
-          (message "Mindwtr task %s: %s" (if done "logged" "created") (plist-get ev :title))
+          (message "Nirvana task %s: %s" (if done "logged" "created") (plist-get ev :title))
           task)))))
 
   (defun sj-calendar-log-meeting ()
-    "Log the past khalel event at point as a DONE Mindwtr task with its clock time."
+    "Log the past khalel event at point as a DONE Nirvana task with its clock time."
     (interactive)
-    (sj-calendar-event-to-mindwtr t))
+    (sj-calendar-event-to-nirvana t))
 
   (defun sj-calendar--clock-in-on-task (orig-fun &optional select &rest args)
-    "On a calendar event, clock in on its Mindwtr task, creating it if needed."
+    "On a calendar event, clock in on its Nirvana task, creating it if needed."
     (if (and (not select) (sj-calendar--event-marker))
-        (org-with-point-at (sj-calendar-event-to-mindwtr)
+        (org-with-point-at (sj-calendar-event-to-nirvana)
           (apply orig-fun select args))
       (apply orig-fun select args)))
 
   (advice-add 'org-clock-in :around #'sj-calendar--clock-in-on-task)
 
-  ;; Engage reads only `mindwtr-file'; add the calendar so meetings show in
-  ;; its Today block.  The tags-todo blocks match Mindwtr keywords, which
-  ;; calendar.org has none of.
-  ;; ponytail: advises a private mindwtr function; move to a mindwtr option
-  ;; if it gets renamed.
-  (with-eval-after-load 'mindwtr-agenda
-    (advice-add 'mindwtr-agenda--files :filter-return
-                (lambda (files) (append files (list khalel-import-org-file)))
-                '((name . sj-calendar-in-mindwtr-agenda))))
+  ;; Show meetings in Engage's Today block.
+  (with-eval-after-load 'nirvana-gtd
+    (setq nirvana-gtd-extra-agenda-files (list khalel-import-org-file)))
 
 #+end_src
 ** Hyperbole / Dashboard
