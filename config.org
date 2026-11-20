@@ -659,7 +659,7 @@ from the Phone block via =material-pbm-icons= (see below). Design:
   (defcustom android-support-global-tool-bar-slots
     '((sj-home                              . "view-dashboard-outline")
       (org-capture-inbox                    . "inbox-arrow-down-outline")
-      (mindwtr-engage                       . "calendar-check-outline")
+      (org-agenda                           . "calendar-check-outline")
       (denote-journal-new-or-existing-entry . "notebook-outline")
       (consult-notes                        . "text-box-search-outline"))
     "Quick-command slots on the Android tool bar, as (COMMAND . MDI-ICON-NAME)."
@@ -1483,7 +1483,54 @@ One alternative can be to have a separate script to copy the required passwords 
     (define-key org-mode-map (kbd "S-<return>") #'my-org-shift-return)
     )
 
+  ;; Nirvana <-> org sync.  Private repo, so not on the phone.
+  (use-package nirvana
+    :ensure (:host github :repo "srijan/nirvana-emacs")
+    :if (not my-phone-p)
+    :after org
+    :demand t
+
+    :custom
+    (nirvana-user sj/mail-personal)
+    (nirvana-file (sj/sync "docs/org/nirvana.org"))
+
+    :init
+    (with-eval-after-load 'org
+      (add-to-list 'org-agenda-files (sj/sync "docs/org/nirvana.org"))
+      (add-to-list 'org-agenda-files (sj/sync "docs/org/misc.org")))
+    (with-eval-after-load 'org-capture
+      (add-to-list 'org-capture-templates
+                   '("i" "Nirvana inbox" entry
+                     (file+function nirvana-capture--file nirvana-capture--goto-inbox)
+                     "* INBOX %?\n"))
+      (add-to-list 'org-capture-templates
+                   '("l" "Nirvana inbox w/ link" entry
+                     (file+function nirvana-capture--file nirvana-capture--goto-inbox)
+                     "* INBOX %?\n%a\n%i\n")))
+
+    (defun org-capture-inbox () (interactive) (org-capture nil "i"))
+    (defun org-capture-mail ()
+      (interactive)
+      (call-interactively 'org-store-link)
+      (org-capture nil "l"))
+    (defun nirvana-open () (interactive) (find-file nirvana-file))
+
+    :config
+    (nirvana-auto-sync-mode 1)
+    (require 'nirvana-gtd)
+
+    :bind
+    (("C-c d e" . nirvana-engage)
+     ("C-c d p" . nirvana-projects)
+     ("C-c d k" . nirvana-clarify)
+     ("C-c i"   . org-capture-inbox)
+     ("C-c J"   . nirvana-open)
+     ("C-c l"   . org-store-link)
+     ("C-c S"   . nirvana-sync)))
+
+  ;; Disabled while trying Nirvana (2026-11-19); mindwtr.org is kept as history.
   (use-package mindwtr
+    :disabled t
     :ensure (:host github :repo "srijan/mindwtr-emacs")
     :after org
     :mode ("/mindwtr\\.org\\'" . mindwtr-mode)
